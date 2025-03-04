@@ -22,9 +22,30 @@ impl Contour {
         points_a.zip(points_b)
     }
 
-    // FIXME: This only works correctly for convex objects!
-    pub fn confines(&self, p: Point) -> bool {
+    pub fn is_convex(&self) -> bool {
+        // Not conves if any of the edges turns "right"
+
+        let edges_a = self.edges();
+        let edges_b = self.edges().skip(1).chain(self.edges().take(1));
+
+        for ((ea1, ea2), (eb1, eb2)) in edges_a.zip(edges_b) {
+            let va = ea2 - ea1;
+            let vb = eb2 - eb1;
+
+            let va90 = Vector::new(-va.y, va.x);
+            if va90.dot(&vb) < 0.0 {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    pub fn confines(&self, p: Point) -> Result<bool> {
         // A contour confines a point if the point is "to the left" of every edge
+
+        // FIXME: This only works correctly for convex objects!
+        ensure!(self.is_convex());
 
         for (p1, p2) in self.edges() {
             let v_edge = p2 - p1;
@@ -34,11 +55,11 @@ impl Contour {
             let cos = v_inwards.dot(&v_point);
 
             if cos < 0.0 {
-                return false;
+                return Ok(false);
             }
         }
 
-        true
+        Ok(true)
     }
 }
 
@@ -152,6 +173,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn contour_convex() {
+        let contour = ContourBuilder::new_circle(point![0.0, 0.0], 1.0, 36);
+        assert!(contour.is_convex());
+
+        let mut contour = ContourBuilder::new_empty();
+        contour.do_move(point![0.0, 1.0]).unwrap();
+        contour.do_line(point![-1.0, -1.0]).unwrap();
+
+        if let ContourFinalisation::Deflated(contour) = contour.build().unwrap() {
+            let contour = contour.inflate(0.1).unwrap();
+            assert!(contour.is_convex());
+        } else {
+            panic!("Contour was deflated");
+        }
+
+        let mut contour = ContourBuilder::new_empty();
+        contour.do_move(point![0.0, 1.0]).unwrap();
+        contour.do_line(point![-1.0, -1.0]).unwrap();
+        contour.do_line(point![1.0, -1.0]).unwrap();
+        contour.do_line(point![1.0, -2.0]).unwrap();
+        contour.do_line(point![5.0, -2.0]).unwrap();
+        contour.do_line(point![5.0, 0.0]).unwrap();
+        contour.do_close().unwrap();
+
+        if let ContourFinalisation::Contour(contour) = contour.build().unwrap() {
+            assert!(!contour.is_convex());
+        } else {
+            panic!("Contour was deflated");
+        }
+    }
+
+    #[test]
     fn contour_basic_confines() {
         let mut contour = ContourBuilder::new_empty();
         contour.do_move(point![0.0, 1.0]).unwrap();
@@ -160,15 +213,15 @@ mod tests {
         contour.do_close().unwrap();
 
         if let ContourFinalisation::Contour(contour) = contour.build().unwrap() {
-            assert!(contour.confines(point![0.0, 0.0]));
-            assert!(contour.confines(point![0.5, 0.0]));
-            assert!(contour.confines(point![-0.5, 0.0]));
-            assert!(contour.confines(point![0.0, 0.5]));
+            assert!(contour.confines(point![0.0, 0.0]).unwrap());
+            assert!(contour.confines(point![0.5, 0.0]).unwrap());
+            assert!(contour.confines(point![-0.5, 0.0]).unwrap());
+            assert!(contour.confines(point![0.0, 0.5]).unwrap());
 
-            assert!(!contour.confines(point![2.0, 0.0]));
-            assert!(!contour.confines(point![0.0, 2.0]));
-            assert!(!contour.confines(point![-2.0, 0.0]));
-            assert!(!contour.confines(point![0.0, -2.0]));
+            assert!(!contour.confines(point![2.0, 0.0]).unwrap());
+            assert!(!contour.confines(point![0.0, 2.0]).unwrap());
+            assert!(!contour.confines(point![-2.0, 0.0]).unwrap());
+            assert!(!contour.confines(point![0.0, -2.0]).unwrap());
         } else {
             panic!("Contour was deflated");
         }
@@ -178,16 +231,16 @@ mod tests {
     fn contour_circle_confines() {
         let contour = ContourBuilder::new_circle(point![0.0, 0.0], 1.0, 36);
 
-        assert!(contour.confines(point![0.0, 0.0]));
-        assert!(contour.confines(point![0.69, 0.69]));
+        assert!(contour.confines(point![0.0, 0.0]).unwrap());
+        assert!(contour.confines(point![0.69, 0.69]).unwrap());
 
-        assert!(!contour.confines(point![1.0, 1.0]));
+        assert!(!contour.confines(point![1.0, 1.0]).unwrap());
 
         let contour = ContourBuilder::new_circle(point![1.0, 1.0], 1.0, 36);
 
-        assert!(contour.confines(point![1.0, 1.0]));
-        assert!(contour.confines(point![1.69, 1.69]));
+        assert!(contour.confines(point![1.0, 1.0]).unwrap());
+        assert!(contour.confines(point![1.69, 1.69]).unwrap());
 
-        assert!(!contour.confines(point![0.0, 0.0]));
+        assert!(!contour.confines(point![0.0, 0.0]).unwrap());
     }
 }
