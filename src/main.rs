@@ -13,6 +13,21 @@ pub mod types;
 #[derive(Parser)]
 pub struct Args {
     pub input: PathBuf,
+
+    #[clap(default_value = "tmp/")]
+    pub outdir: PathBuf,
+}
+
+impl Args {
+    pub fn output(&self) -> Result<PathBuf> {
+        if !self.outdir.exists() {
+            std::fs::create_dir_all(&self.outdir)?;
+        }
+        ensure!(self.outdir.is_dir(), "{:?} should be a directory", self.outdir);
+
+        let file_name = self.input.file_name().context("Input path does not contain a file name")?;
+        Ok(self.outdir.join(file_name))
+    }
 }
 
 fn main() {
@@ -30,7 +45,7 @@ fn run(args: Args) -> Result<()> {
     let mut view_box = None;
 
     let mut content = String::new();
-    for event in svg::open(args.input, &mut content)? {
+    for event in svg::open(&args.input, &mut content)? {
         match event {
             Event::Tag(tag::SVG, _, attrs) => {
                 if let Some(vb) = attrs.get("viewBox") {
@@ -160,7 +175,7 @@ fn run(args: Args) -> Result<()> {
         .add(group)
         .set("viewBox", view_box.context("viewBox was not encountered")?);
 
-    println!("{}", document.to_string());
+    svg::save(args.output()?, &document)?;
 
     Ok(())
 }
@@ -170,12 +185,19 @@ fn run(args: Args) -> Result<()> {
 mod tests {
     use super::*;
 
+    const INDIR: &'_ str = "test-data/";
+    const OUTDIR: &'_ str = "tmp/test-output/";
+
+    fn make_args(input: &str) -> Args {
+        Args {
+            input: PathBuf::from(INDIR).join(input),
+            outdir: PathBuf::from(OUTDIR),
+        }
+    }
+
     #[test]
     fn unclosed_wont_crash() {
-        let args = Args {
-            input: PathBuf::from("test-data/unclosed.svg"),
-        };
-
+        let args = make_args("unclosed.svg");
         run(args).unwrap();
     }
 }
