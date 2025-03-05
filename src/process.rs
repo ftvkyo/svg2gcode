@@ -2,21 +2,36 @@ use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
-use svg::{node::element::{path::{Command, Data, Position}, tag, Group, Path}, parser::Event, Document};
+use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::types::Float;
+use crate::{contour::Contour, types::Float};
 use crate::contour::{ContourFinalisation as CF, ContourBuilder};
 
 
-struct Attributes {
+struct SvgContext {
+    view_box: Option<String>,
     stroke_width: Vec<Option<Float>>,
 }
 
-impl Attributes {
+impl SvgContext {
     pub fn new() -> Self {
         Self {
+            view_box: None,
             stroke_width: vec![],
         }
+    }
+
+    pub fn svg_push(&mut self, attrs: &HashMap<String, svg::node::Value>) -> Result<()> {
+        for (attr, val) in attrs {
+            match attr.as_str() {
+                "viewBox" => {
+                    ensure!(self.view_box.replace(val.to_string()).is_none());
+                },
+                _ => {}
+            }
+        }
+
+        Ok(())
     }
 
     pub fn group_push(&mut self, attrs: &HashMap<String, svg::node::Value>) -> Result<()> {
@@ -58,6 +73,10 @@ impl Attributes {
         Ok(())
     }
 
+    pub fn get_view_box(&self) -> Result<&str> {
+        self.view_box.as_ref().map(|s| s.as_str()).context("No view box?")
+    }
+
     pub fn get_stroke_width(&self) -> Result<Float> {
         let val = self.stroke_width.iter().filter_map(|x| *x).last();
         if let Some(val) = val {
@@ -70,10 +89,9 @@ impl Attributes {
 
 
 pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
-    let mut style = Attributes::new();
+    let mut ctx = SvgContext::new();
 
     let mut contours = vec![];
-    let mut view_box = None;
 
     let mut content = String::new();
     for event in svg::open(file.as_ref(), &mut content)? {
@@ -88,21 +106,20 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
             | Event::Tag(tag::Text, ..)
             | Event::Tag(tag::Title, ..) => {},
 
-            /* Get the view box */
+            /* Handle svg opening and closing */
 
-            Event::Tag(tag::SVG, _, attrs) => {
-                if let Some(vb) = attrs.get("viewBox") {
-                    view_box = Some(vb.to_string());
-                }
+            Event::Tag(tag::SVG, tag::Type::Start, attrs) => {
+                ctx.svg_push(&attrs)?;
             },
+            Event::Tag(tag::SVG, tag::Type::End, ..) => {},
 
             /* Handle group opening and closing */
 
             Event::Tag(tag::Group, tag::Type::Start, attrs) => {
-                style.group_push(&attrs)?;
+                ctx.group_push(&attrs)?;
             },
             Event::Tag(tag::Group, tag::Type::End, ..) => {
-                style.group_pop()?;
+                ctx.group_pop()?;
             }
 
             /* Handle paths */
@@ -143,7 +160,7 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
                 let contour = match contour.build()? {
                     CF::Contour(contour) => Ok(contour),
                     CF::Unclosed(contour) => {
-                        let stroke_width = style.get_stroke_width()?;
+                        let stroke_width = ctx.get_stroke_width()?;
                         contour.expand(stroke_width)
                     },
                 };
@@ -186,32 +203,24 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
         }
     }
 
+    make_svg(ctx.get_view_box()?, contours)
+}
+
+
+fn make_svg(view_box: &str, contours: Vec<Contour>) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
     for contour in &contours {
-        let first = contour.points().next().unwrap();
-
-        let mut data = Data::new()
-            .move_to((first.x, first.y));
-
-        for p in contour.points().skip(1) {
-            data = data.line_to((p.x, p.y));
-        }
-        data = data.close();
-
-        let path = Path::new()
-            .set("d", data)
-            .set("vector-effect", "non-scaling-stroke");
-
+        let path: svg::node::element::Path = contour.into();
         g_contours = g_contours.add(path);
     }
 
     let document = Document::new()
         .add(g_contours)
-        .set("viewBox", view_box.context("viewBox was not encountered")?);
+        .set("viewBox", view_box);
 
     Ok(document)
 }

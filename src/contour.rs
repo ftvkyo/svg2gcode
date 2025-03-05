@@ -66,6 +66,26 @@ impl Contour {
     }
 }
 
+impl Into<svg::node::element::Path> for &Contour {
+    fn into(self) -> svg::node::element::Path {
+        let first = self.points().next().unwrap();
+
+        let mut data = svg::node::element::path::Data::new()
+            .move_to((first.x, first.y));
+
+        for p in self.points().skip(1) {
+            data = data.line_to((p.x, p.y));
+        }
+        data = data.close();
+
+        let path = svg::node::element::Path::new()
+            .set("d", data)
+            .set("vector-effect", "non-scaling-stroke");
+
+        path
+    }
+}
+
 pub struct ContourUnclosed {
     pub(self) inner: Contour,
 }
