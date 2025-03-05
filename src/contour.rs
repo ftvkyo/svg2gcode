@@ -112,7 +112,7 @@ impl ContourUnclosed {
         Ok(contour)
     }
 
-    pub fn inflate(mut self, thickness: Float) -> Result<Contour> {
+    pub fn expand(mut self, thickness: Float) -> Result<Contour> {
         if self.inner.boundary.len() == 2 {
             return self.inflate_simple(thickness);
         }
@@ -262,7 +262,7 @@ mod tests {
         contour.do_line(point![-1.0, -1.0]).unwrap();
 
         if let ContourFinalisation::Unclosed(contour) = contour.build().unwrap() {
-            let contour = contour.inflate(0.1).unwrap();
+            let contour = contour.expand(0.1).unwrap();
             assert!(contour.is_convex());
         } else {
             panic!("Contour was deflated");
