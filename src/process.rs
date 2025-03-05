@@ -88,7 +88,7 @@ impl SvgContext {
 }
 
 
-pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
+pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::Document> {
     let mut ctx = SvgContext::new();
 
     let mut g_originals = Group::new()
@@ -158,10 +158,13 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
                 }
 
                 let contour = match contour.build()? {
+                    // TODO: closed contours should also respond to additional offset
                     CF::Contour(contour) => Ok(contour),
+                    // TODO: line caps in unclosed contours should also respond to additional offset
                     CF::Unclosed(contour) => {
-                        let stroke_width = ctx.get_stroke_width()?;
-                        contour.expand(stroke_width)
+                        let expansion = ctx.get_stroke_width()? + offset;
+                        ensure!(expansion > 0.0, "Tried to make a negative width line");
+                        contour.expand(expansion)
                     },
                 };
 
@@ -188,6 +191,9 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
                 let cx: Float = attrs.get("cx").context("No 'cx' on circle")?.parse()?;
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
+
+                let r = r + offset / 2.0;
+                ensure!(r > 0.0, "Tried to make a circle with a negative radius");
 
                 let sides = if r < 0.5 {
                     24

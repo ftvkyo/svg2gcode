@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
-use anyhow::{ensure, Context, Result};
+use anyhow::{ensure, Result};
 use clap::Parser;
+use types::Float;
 
 pub mod contour;
 pub mod process;
@@ -10,21 +11,10 @@ pub mod types;
 #[derive(Parser)]
 pub struct Args {
     pub input: PathBuf,
+    pub output: PathBuf,
 
-    #[clap(default_value = "tmp/")]
-    pub outdir: PathBuf,
-}
-
-impl Args {
-    pub fn output(&self) -> Result<PathBuf> {
-        if !self.outdir.exists() {
-            std::fs::create_dir_all(&self.outdir)?;
-        }
-        ensure!(self.outdir.is_dir(), "{:?} should be a directory", self.outdir);
-
-        let file_name = self.input.file_name().context("Input path does not contain a file name")?;
-        Ok(self.outdir.join(file_name))
-    }
+    #[clap(default_value = "0")]
+    pub offset: Float,
 }
 
 
@@ -37,8 +27,16 @@ fn main() {
 
 
 fn run(args: Args) -> Result<()> {
-    let document = process::process(&args.input)?;
-    svg::save(args.output()?, &document)?;
+    let outdir = args.output.parent();
+    if let Some(outdir) = outdir {
+        if !outdir.exists() {
+            std::fs::create_dir_all(&outdir)?;
+        }
+        ensure!(outdir.is_dir(), "{outdir:?} should be a directory");
+    }
+
+    let document = process::process(&args.input, args.offset)?;
+    svg::save(&args.output, &document)?;
     Ok(())
 }
 
@@ -53,13 +51,22 @@ mod test_files {
     fn make_args(input: &str) -> Args {
         Args {
             input: PathBuf::from(INDIR).join(input),
-            outdir: PathBuf::from(OUTDIR),
+            output: PathBuf::from(OUTDIR).join(input),
+            offset: 0.0,
         }
     }
 
     #[test]
     fn mix() {
         let args = make_args("mix.svg");
+        run(args).unwrap();
+    }
+
+    #[test]
+    fn mix_with_offset() {
+        let mut args = make_args("mix.svg");
+        args.output.set_file_name("mix-with-offset.svg");
+        args.offset = 1.5;
         run(args).unwrap();
     }
 

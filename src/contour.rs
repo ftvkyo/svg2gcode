@@ -12,6 +12,7 @@ fn is_turning_left(va: &(Point, Point), vb: &(Point, Point)) -> bool {
     va90.dot(&vb) > 0.0
 }
 
+// TODO: make this a trait
 #[derive(Clone, Debug)]
 pub struct Contour {
     /// Boundary of the contour, counter-clockwise
