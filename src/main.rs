@@ -27,15 +27,20 @@ fn run(args: Args) -> Result<()> {
 
     let mut contours = vec![];
     let mut thickness = None;
+    let mut view_box = None;
 
     let mut content = String::new();
     for event in svg::open(args.input, &mut content)? {
         match event {
+            Event::Tag(tag::SVG, _, attrs) => {
+                if let Some(vb) = attrs.get("viewBox") {
+                    view_box = Some(vb.to_string());
+                }
+            },
             Event::Instruction(..) => {},
             Event::Declaration(..) => {},
             Event::Text(..) => {},
-            Event::Tag(tag::SVG, ..)
-            | Event::Tag(tag::Description, ..)
+            Event::Tag(tag::Description, ..)
             | Event::Tag(tag::Text, ..)
             | Event::Tag(tag::Title, ..) => {},
             Event::Tag(tag::Group, _, attrs) => {
@@ -93,7 +98,7 @@ fn run(args: Args) -> Result<()> {
 
                 let contour = match contour.build()? {
                     CF::Contour(contour) => Ok(contour),
-                    CF::Deflated(contour) => {
+                    CF::Unclosed(contour) => {
                         contour.inflate(thickness.context("Tried to inflate, but no thickness was set")?)
                     },
                 };
@@ -130,21 +135,9 @@ fn run(args: Args) -> Result<()> {
         }
     }
 
-    let mut group = Group::new();
-
-    let mut min_x: Float = 0.0;
-    let mut max_x: Float = 0.0;
-    let mut min_y: Float = 0.0;
-    let mut max_y: Float = 0.0;
-
-    for contour in &contours {
-        for p in contour.points() {
-            min_x = min_x.min(p.x);
-            max_x = max_x.max(p.x);
-            min_y = min_y.min(p.y);
-            max_y = max_y.max(p.y);
-        }
-    }
+    let mut group = Group::new()
+        .set("fill", "black")
+        .set("stroke", "none");
 
     for contour in &contours {
         let first = contour.points().next().unwrap();
@@ -158,18 +151,31 @@ fn run(args: Args) -> Result<()> {
         data = data.close();
 
         let path = Path::new()
-            .set("fill", "black")
-            .set("stroke", "none")
             .set("d", data);
 
         group = group.add(path);
     }
 
     let document = Document::new()
-        .set("viewBox", (min_x - 5.0, min_y - 5.0, max_x - min_x + 10.0, max_y - min_y + 10.0))
-        .add(group);
+        .add(group)
+        .set("viewBox", view_box.context("viewBox was not encountered")?);
 
     println!("{}", document.to_string());
 
     Ok(())
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unclosed_wont_crash() {
+        let args = Args {
+            input: PathBuf::from("test-data/unclosed.svg"),
+        };
+
+        run(args).unwrap();
+    }
 }

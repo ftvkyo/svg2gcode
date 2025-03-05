@@ -5,6 +5,13 @@ use nalgebra::{point, vector, Matrix3};
 
 use crate::types::{Float, Point, Vector};
 
+fn is_turning_left(va: &(Point, Point), vb: &(Point, Point)) -> bool {
+    let va = va.1 - va.0;
+    let vb = vb.1 - vb.0;
+    let va90 = Vector::new(-va.y, va.x);
+    va90.dot(&vb) > 0.0
+}
+
 #[derive(Clone, Debug)]
 pub struct Contour {
     /// Boundary of the contour, counter-clockwise
@@ -12,13 +19,13 @@ pub struct Contour {
 }
 
 impl Contour {
-    pub fn points(&self) -> impl Iterator<Item = Point> {
+    pub fn points(&self) -> impl DoubleEndedIterator<Item = Point> {
         self.boundary.iter().copied()
     }
 
     pub fn edges(&self) -> impl Iterator<Item = (Point, Point)> {
-        let points_a = self.boundary.iter().copied();
-        let points_b = self.boundary.iter().skip(1).chain(self.boundary.iter().take(1)).copied();
+        let points_a = self.points();
+        let points_b = self.points().skip(1).chain(self.points().take(1));
         points_a.zip(points_b)
     }
 
@@ -28,12 +35,8 @@ impl Contour {
         let edges_a = self.edges();
         let edges_b = self.edges().skip(1).chain(self.edges().take(1));
 
-        for ((ea1, ea2), (eb1, eb2)) in edges_a.zip(edges_b) {
-            let va = ea2 - ea1;
-            let vb = eb2 - eb1;
-
-            let va90 = Vector::new(-va.y, va.x);
-            if va90.dot(&vb) < 0.0 {
+        for (ea, eb) in edges_a.zip(edges_b) {
+            if !is_turning_left(&ea, &eb) {
                 return false;
             }
         }
@@ -68,10 +71,24 @@ pub struct ContourUnclosed {
 }
 
 impl ContourUnclosed {
-    pub fn inflate(self, thickness: Float) -> Result<Contour> {
-        let mut contour = self.inner;
+    pub fn points(&self) -> impl DoubleEndedIterator<Item = Point> {
+        self.inner.boundary.iter().copied()
+    }
 
-        ensure!(contour.boundary.len() == 2);
+    fn edges(&self) -> impl Iterator<Item = (Point, Point)> {
+        let points_a = self.points();
+        let points_b = self.points();
+        points_a.zip(points_b.skip(1))
+    }
+
+    pub fn edges_reverse(&self) -> impl Iterator<Item = (Point, Point)> {
+        let points_a = self.points().rev();
+        let points_b = self.points().rev();
+        points_b.zip(points_a.skip(1))
+    }
+
+    fn inflate_simple(self, thickness: Float) -> Result<Contour> {
+        let mut contour = self.inner;
 
         let line_p1 = contour.boundary[0];
         let line_p2 = contour.boundary[1];
@@ -94,12 +111,75 @@ impl ContourUnclosed {
 
         Ok(contour)
     }
+
+    pub fn inflate(mut self, thickness: Float) -> Result<Contour> {
+        if self.inner.boundary.len() == 2 {
+            return self.inflate_simple(thickness);
+        }
+
+        ensure!(self.inner.boundary.len() > 2);
+
+        // Hopefully the traces are not too crazy and we can resolve rectangle intersections one by one.
+
+        let offset_line = |(p1, p2): (Point, Point)| {
+            let line = p2 - p1;
+            let v270 = Vector::new(line.y, - line.x).normalize() * thickness / 2.0;
+            (p1 + v270, p2 + v270)
+        };
+
+        let get_angle = |line_a: (Point, Point), line_b: (Point, Point)| {
+            let line_a = line_a.1 - line_a.0;
+            let line_b = line_b.1 - line_b.0;
+            line_a.angle(&line_b)
+        };
+
+        let mut boundary = vec![];
+
+        let mut do_side = |edges: Vec<(Point, Point)>| {
+            let last = edges.last().unwrap().clone();
+
+            let mut edges = edges.into_iter();
+            let mut prev = edges.next().unwrap();
+
+            boundary.push(offset_line(prev).0);
+
+            for curr in edges {
+                let angle = get_angle(prev, curr);
+                let turning_left = is_turning_left(&prev, &curr);
+
+                let line = offset_line(curr);
+                let change = thickness * (angle / 2.0).tan() / 2.0;
+
+                // Line from 0 to 1
+                let line_v = line.1 - line.0;
+
+                let line_v = if turning_left {
+                    - line_v.normalize() * change
+                } else {
+                    line_v.normalize() * change
+                };
+
+                boundary.push(line.0 + line_v);
+
+                prev = curr;
+            }
+
+            boundary.push(offset_line(last).1);
+        };
+
+        do_side(self.edges().collect());
+        do_side(self.edges_reverse().collect());
+
+        self.inner.boundary = boundary;
+
+        Ok(self.inner)
+    }
 }
 
 #[must_use]
 pub enum ContourFinalisation {
     Contour(Contour),
-    Deflated(ContourUnclosed),
+    Unclosed(ContourUnclosed),
 }
 
 pub struct ContourBuilder {
@@ -162,7 +242,7 @@ impl ContourBuilder {
             return Ok(ContourFinalisation::Contour(self.inner));
         }
 
-        Ok(ContourFinalisation::Deflated(ContourUnclosed { inner: self.inner }))
+        Ok(ContourFinalisation::Unclosed(ContourUnclosed { inner: self.inner }))
     }
 }
 
@@ -181,7 +261,7 @@ mod tests {
         contour.do_move(point![0.0, 1.0]).unwrap();
         contour.do_line(point![-1.0, -1.0]).unwrap();
 
-        if let ContourFinalisation::Deflated(contour) = contour.build().unwrap() {
+        if let ContourFinalisation::Unclosed(contour) = contour.build().unwrap() {
             let contour = contour.inflate(0.1).unwrap();
             assert!(contour.is_convex());
         } else {
