@@ -91,6 +91,8 @@ impl SvgContext {
 pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
     let mut ctx = SvgContext::new();
 
+    let mut g_originals = Group::new()
+        .set("opacity", "50%");
     let mut contours = vec![];
 
     let mut content = String::new();
@@ -124,13 +126,11 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
 
             /* Handle paths */
 
-            Event::Tag(tag::Path, _, attrs) => {
+            Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
                 let data = attrs.get("d").unwrap();
-                let data = Data::parse(data).unwrap();
 
                 let mut contour = ContourBuilder::new_empty();
-
-                for command in data.iter() {
+                for command in Data::parse(data).unwrap().iter() {
                     match command {
                         &Command::Move(Position::Absolute, ref params) => {
                             ensure!(params.len() % 2 == 0);
@@ -173,11 +173,18 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
                         eprintln!("Failed to build a contour: {err}");
                     },
                 }
+
+                // Save the original shape too
+
+                let mut original = svg::node::element::Path::new();
+                original = fix_attributes(original, attrs.clone())?;
+                original = fix_stroke_width(original, || ctx.get_stroke_width())?;
+                g_originals = g_originals.add(original);
             },
 
             /* Handle circles */
 
-            Event::Tag(tag::Circle, _, attrs) => {
+            Event::Tag(tag::Circle, tag::Type::Empty, attrs) => {
                 let cx: Float = attrs.get("cx").context("No 'cx' on circle")?.parse()?;
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
@@ -193,6 +200,12 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
                 contours.push(
                     ContourBuilder::new_circle(point![cx, cy], r, sides),
                 );
+
+                // Save the original shape too
+
+                let mut original = svg::node::element::Circle::new();
+                original = fix_attributes(original, attrs.clone())?;
+                g_originals = g_originals.add(original);
             },
 
             /* Everything else is not supported */
@@ -203,11 +216,41 @@ pub fn process(file: impl AsRef<std::path::Path>) -> Result<svg::Document> {
         }
     }
 
-    make_svg(ctx.get_view_box()?, contours)
+    make_svg(ctx.get_view_box()?, contours, g_originals)
 }
 
 
-fn make_svg(view_box: &str, contours: Vec<Contour>) -> Result<svg::Document> {
+fn fix_attributes<T: svg::Node>(mut node: T, original_attrs: svg::node::Attributes) -> Result<T> {
+    let attrs = node.get_attributes_mut().context("No attributes?")?;
+    *attrs = original_attrs;
+
+    let mut make_gray = |attr| {
+        if let Some(attr) = attrs.get_mut(attr) {
+            if *attr != "none" {
+                *attr = "gray".into();
+            }
+        }
+    };
+
+    make_gray("fill");
+    make_gray("stroke");
+
+    Ok(node)
+}
+
+
+fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Result<Float>) -> Result<T> {
+    let attrs = node.get_attributes_mut().context("No attributes?")?;
+
+    if !attrs.contains_key("stroke-width") {
+        attrs.insert("stroke-width".to_string(), get_stroke_width()?.into());
+    }
+
+    Ok(node)
+}
+
+
+fn make_svg(view_box: &str, contours: Vec<Contour>, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
@@ -219,6 +262,7 @@ fn make_svg(view_box: &str, contours: Vec<Contour>) -> Result<svg::Document> {
     }
 
     let document = Document::new()
+        .add(g_originals)
         .add(g_contours)
         .set("viewBox", view_box);
 
