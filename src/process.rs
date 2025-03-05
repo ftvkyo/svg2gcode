@@ -4,8 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::{contour::Contour, types::Float};
-use crate::contour::{ContourFinalisation as CF, ContourBuilder};
+use crate::geo::{contour::{self, Contour}, Float};
 
 
 struct SvgContext {
@@ -93,7 +92,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
 
     let mut g_originals = Group::new()
         .set("opacity", "50%");
-    let mut contours = vec![];
+    let mut g_contours: Vec<svg::node::element::Path> = vec![];
 
     let mut content = String::new();
     for event in svg::open(file.as_ref(), &mut content)? {
@@ -129,52 +128,44 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
             Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
                 let data = attrs.get("d").unwrap();
 
-                let mut contour = ContourBuilder::new_empty();
-                for command in Data::parse(data).unwrap().iter() {
-                    match command {
-                        &Command::Move(Position::Absolute, ref params) => {
-                            ensure!(params.len() % 2 == 0);
-                            for p in params.chunks(2) {
-                                if let [x, y] = p {
-                                    contour.do_move(point![*x, *y])?;
+                let mut line = contour::Line::empty();
+
+                // Mwahahaha
+                'out: loop {
+                    for command in Data::parse(data).unwrap().iter() {
+                        match command {
+                            &Command::Move(Position::Absolute, ref params) => {
+                                ensure!(params.len() % 2 == 0);
+                                for p in params.chunks(2) {
+                                    if let [x, y] = p {
+                                        line.do_move(point![*x, *y])?;
+                                    }
                                 }
-                            }
-                        },
-                        &Command::Line(Position::Absolute, ref params) => {
-                            ensure!(params.len() % 2 == 0);
-                            for p in params.chunks(2) {
-                                if let [x, y] = p {
-                                    contour.do_line(point![*x, *y])?;
+                            },
+                            &Command::Line(Position::Absolute, ref params) => {
+                                ensure!(params.len() % 2 == 0);
+                                for p in params.chunks(2) {
+                                    if let [x, y] = p {
+                                        line.do_line(point![*x, *y])?;
+                                    }
                                 }
-                            }
-                        },
-                        &Command::Close => {
-                            contour.do_close()?;
-                        },
-                        command => {
-                            eprintln!("Unsupported path command {command:?}");
-                        },
+                            },
+                            &Command::Close => {
+                                let area = line.do_close()?;
+                                g_contours.push(area.svg()?);
+
+                                break 'out;
+                            },
+                            command => {
+                                eprintln!("Unsupported path command {command:?}");
+                            },
+                        }
                     }
-                }
 
-                let contour = match contour.build()? {
-                    // TODO: closed contours should also respond to additional offset
-                    CF::Contour(contour) => Ok(contour),
-                    // TODO: line caps in unclosed contours should also respond to additional offset
-                    CF::Unclosed(contour) => {
-                        let expansion = ctx.get_stroke_width()? + offset;
-                        ensure!(expansion > 0.0, "Tried to make a negative width line");
-                        contour.expand(expansion)
-                    },
-                };
+                    line.set_thickness(ctx.get_stroke_width()? + offset);
+                    g_contours.push(line.svg()?);
 
-                match contour {
-                    Ok(contour) => {
-                        contours.push(contour);
-                    },
-                    Err(err) => {
-                        eprintln!("Failed to build a contour: {err}");
-                    },
+                    break 'out;
                 }
 
                 // Save the original shape too
@@ -195,17 +186,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 let r = r + offset / 2.0;
                 ensure!(r > 0.0, "Tried to make a circle with a negative radius");
 
-                let sides = if r < 0.5 {
-                    24
-                } else if r < 2.0 {
-                    48
-                } else {
-                    72
-                };
-
-                contours.push(
-                    ContourBuilder::new_circle(point![cx, cy], r, sides),
-                );
+                g_contours.push(contour::Circle::new(point![cx, cy], r).svg()?);
 
                 // Save the original shape too
 
@@ -222,7 +203,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
         }
     }
 
-    make_svg(ctx.get_view_box()?, contours, g_originals)
+    make_svg(ctx.get_view_box()?, g_contours, g_originals)
 }
 
 
@@ -256,15 +237,14 @@ fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Re
 }
 
 
-fn make_svg(view_box: &str, contours: Vec<Contour>, g_originals: Group) -> Result<svg::Document> {
+fn make_svg(view_box: &str, contours: Vec<svg::node::element::Path>, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
-    for contour in &contours {
-        let path: svg::node::element::Path = contour.into();
-        g_contours = g_contours.add(path);
+    for contour in contours {
+        g_contours = g_contours.add(contour);
     }
 
     let document = Document::new()

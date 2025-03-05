@@ -2,11 +2,9 @@ use std::path::PathBuf;
 
 use anyhow::{ensure, Result};
 use clap::Parser;
-use types::Float;
 
-pub mod contour;
+pub mod geo;
 pub mod process;
-pub mod types;
 
 #[derive(Parser)]
 pub struct Args {
@@ -14,7 +12,7 @@ pub struct Args {
     pub output: PathBuf,
 
     #[clap(default_value = "0")]
-    pub offset: Float,
+    pub offset: geo::Float,
 }
 
 
