@@ -150,9 +150,10 @@ fn run(args: Args) -> Result<()> {
         }
     }
 
-    let mut group = Group::new()
-        .set("fill", "black")
-        .set("stroke", "none");
+    let mut g_contours = Group::new()
+        .set("fill", "none")
+        .set("stroke", "black")
+        .set("stroke-width", 1);
 
     for contour in &contours {
         let first = contour.points().next().unwrap();
@@ -166,13 +167,14 @@ fn run(args: Args) -> Result<()> {
         data = data.close();
 
         let path = Path::new()
-            .set("d", data);
+            .set("d", data)
+            .set("vector-effect", "non-scaling-stroke");
 
-        group = group.add(path);
+        g_contours = g_contours.add(path);
     }
 
     let document = Document::new()
-        .add(group)
+        .add(g_contours)
         .set("viewBox", view_box.context("viewBox was not encountered")?);
 
     svg::save(args.output()?, &document)?;
