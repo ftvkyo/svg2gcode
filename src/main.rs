@@ -58,6 +58,12 @@ mod test_files {
     }
 
     #[test]
+    fn mix() {
+        let args = make_args("mix.svg");
+        run(args).unwrap();
+    }
+
+    #[test]
     fn nested_groups() {
         let args = make_args("nested-groups.svg");
         run(args).unwrap();
