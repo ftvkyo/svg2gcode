@@ -35,12 +35,12 @@ impl Edge {
         let v_self_90 = na::vector![-v_self.y, v_self.x];
         let dot = v_self_90.dot(&v_next);
 
-        if dot > 0.0 {
-            Turning::Left
-        } else if dot < 0.0 {
-            Turning::Right
-        } else {
+        if dot.abs() < E {
             Turning::Collinear
+        } else if dot > 0.0 {
+            Turning::Left
+        } else {
+            Turning::Right
         }
     }
 
@@ -55,7 +55,7 @@ impl Edge {
         }
     }
 
-    /// Finds a point to link the second point of `self` with the first point of `other` (replacing them)
+    /// Finds a point to link the second point of `self` with the first point of `other` (meant to replace them)
     pub fn link(&self, other: &Self) -> Result<Point> {
         let self_dx = self.end.x - self.start.x;
         let self_dy = self.end.y - self.start.y;

@@ -18,29 +18,23 @@ impl Line {
         }
     }
 
-    #[must_use]
     pub fn do_move(&mut self, p: Point) -> Result<()> {
         ensure!(self.points.len() == 0, "Move is only supported as the first command");
         self.points.push(p);
         Ok(())
     }
 
-    #[must_use]
     pub fn do_line(&mut self, p: Point) -> Result<()> {
         ensure!(self.points.len() > 0, "Line is only supported as a follow-up command");
         self.points.push(p);
         Ok(())
     }
 
-    #[must_use]
     pub fn do_close(self) -> Result<Contour> {
         ensure!(self.points.len() >= 3, "Can only close an area with at least 3 points");
-        Ok(Contour {
-            boundary: self.points,
-        })
+        Contour::new(self.points)
     }
 
-    #[must_use]
     pub fn do_enthicken(self, thickness: Float) -> Result<Contour> {
         let pts = self.points.len();
         ensure!(pts >= 2, "A line should have at least 2 points");
@@ -89,9 +83,7 @@ impl Line {
 
         boundary.push(p_last);
 
-        Ok(Contour {
-            boundary,
-        })
+        Contour::new(boundary)
     }
 }
 
@@ -135,9 +127,7 @@ impl TryInto<Contour> for Circle {
             v = rot * v;
         }
 
-        Ok(Contour {
-            boundary
-        })
+        Contour::new(boundary)
     }
 }
 
@@ -145,10 +135,33 @@ impl TryInto<Contour> for Circle {
 /// Represents a contour defined by a closed loop of points, ordered counter-clockwise
 pub struct Contour {
     boundary: Vec<Point>,
-    // TODO: support additional offset
 }
 
 impl Contour {
+    pub fn new(boundary: Vec<Point>) -> Result<Self> {
+        ensure!(boundary.len() >= 3);
+
+        let mut s = Self { boundary };
+
+        let mut turned_left = false;
+        let mut turned_right = false;
+
+        for (e1, e2) in s.edge_pairs()? {
+            match e1.turning(&e2.end) {
+                Turning::Left => turned_left = true,
+                Turning::Right => turned_right = true,
+                Turning::Collinear => {},
+            }
+        }
+
+        if turned_right && !turned_left {
+            eprintln!("Contour winding is backwards. Please fix.");
+            s.boundary.reverse();
+        }
+
+        Ok(s)
+    }
+
     pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = Point>> {
         Ok(self.boundary.clone().into_iter())
     }
@@ -161,25 +174,35 @@ impl Contour {
         Ok(edges)
     }
 
-    pub fn is_convex(&self) -> Result<bool> {
-        let mut edges = self.edges()?.peekable();
+    pub fn edge_pairs(&self) -> Result<impl Iterator<Item = (Edge, Edge)>> {
+        let mut edges_a = self.edges()?.peekable();
+        let e0 = std::iter::once(edges_a.peek().context("No edges?")?.clone());
+        let edges_b = self.edges()?.skip(1).chain(e0);
+        let edges = edges_a.into_iter().zip(edges_b);
+        Ok(edges)
+    }
 
-        let first = edges.peek().context("No points?")?.clone();
-        let mut prev = first.clone();
+    pub fn grow(&mut self, offset: Float) -> Result<()> {
+        if offset == 0.0 {
+            return Ok(());
+        }
+
+        ensure!(offset > 0.0);
+
+        let mut edges = self.edges()?.map(|e| e.translate_right(offset)).peekable();
+        let mut edge_prev = edges.peek().context("No edges?")?.clone();
+        let edges = edges.skip(1).chain(std::iter::once(edge_prev.clone()));
+
+        let mut boundary = vec![];
 
         for edge in edges {
-            if prev.turning(&edge.end) == Turning::Right {
-                return Ok(false);
-            }
-
-            prev = edge;
+            boundary.push(edge_prev.link(&edge)?);
+            edge_prev = edge;
         }
 
-        if prev.turning(&first.end) == Turning::Right {
-            return Ok(false);
-        }
+        self.boundary = boundary;
 
-        Ok(true)
+        Ok(())
     }
 
     pub fn svg(&self) -> Result<SvgPath> {
@@ -199,6 +222,21 @@ impl Contour {
             .set("vector-effect", "non-scaling-stroke");
 
         Ok(path)
+    }
+
+    pub fn is_convex(&self) -> Result<bool> {
+        // Convex if never turning right
+
+        let mut turned_right = false;
+
+        for (e1, e2) in self.edge_pairs()? {
+            match e1.turning(&e2.end) {
+                Turning::Right => turned_right = true,
+                _ => {},
+            }
+        }
+
+        return Ok(!turned_right)
     }
 }
 

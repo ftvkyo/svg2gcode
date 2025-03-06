@@ -162,7 +162,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                         }
                     }
 
-                    contours.push(line.do_enthicken(ctx.get_stroke_width()? + offset)?);
+                    contours.push(line.do_enthicken(ctx.get_stroke_width()?)?);
 
                     break 'out;
                 }
@@ -182,9 +182,6 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                let r = r + offset / 2.0;
-                ensure!(r > 0.0, "Tried to make a circle with a negative radius");
-
                 contours.push(contour::Circle::new(point![cx, cy], r).try_into()?);
 
                 // Save the original shape too
@@ -200,6 +197,10 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 eprintln!("Unsupported event {event:?}");
             }
         }
+    }
+
+    for contour in &mut contours {
+        contour.grow(offset)?;
     }
 
     make_svg(ctx.get_view_box()?, contours, g_originals)
