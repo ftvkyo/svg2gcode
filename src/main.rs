@@ -75,6 +75,12 @@ mod test_files {
     }
 
     #[test]
+    fn separate_lines() {
+        let args = make_args("separate-lines.svg");
+        run(args).unwrap();
+    }
+
+    #[test]
     fn unclosed() {
         let args = make_args("unclosed.svg");
         run(args).unwrap();
