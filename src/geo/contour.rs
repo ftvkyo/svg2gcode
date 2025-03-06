@@ -4,7 +4,7 @@ use svg::node::element::{Path as SvgPath, path::Data as SvgPathData};
 
 use crate::geo::edge::{Edge, Turning};
 
-use super::{Float, Point, TAU};
+use super::{Float, Point, TAU, PI};
 
 
 pub struct Line {
@@ -35,7 +35,10 @@ impl Line {
         Contour::new(self.points)
     }
 
-    pub fn do_enthicken(self, thickness: Float) -> Result<Contour> {
+    pub fn do_enthicken(self, thickness: Float, cap_steps: usize) -> Result<Contour> {
+        ensure!(cap_steps > 0);
+        let cap_rot = na::Rotation2::new(PI / cap_steps as f32);
+
         let pts = self.points.len();
         ensure!(pts >= 2, "A line should have at least 2 points");
 
@@ -46,25 +49,21 @@ impl Line {
         let edge_first = Edge::new(self.points[0].clone(), self.points[1].clone());
         let edge_last = Edge::new(self.points[pts - 2].clone(), self.points[pts - 1].clone());
 
-        // Calculate the terminal points
+        let mut boundary = vec![];
 
-        let p_first = edge_first.translate_right(thickness / 2.0).start;
-        let p_half1 = edge_last.translate_right(thickness / 2.0).end;
-        let p_half2 = edge_last.translate_right(- thickness / 2.0).end;
-        let p_last = edge_first.translate_right(- thickness / 2.0).start;
+        // Find start line cap
+
+        let mut v_cap_start = edge_first.left().normalize() * thickness / 2.0;
+        for _ in 0..=cap_steps {
+            boundary.push(self.points[0] + v_cap_start);
+            v_cap_start = cap_rot * v_cap_start;
+        }
+
+        // Find the right edge
 
         let mut edges_r = self.points.iter()
             .zip(self.points.iter().skip(1))
             .map(map_edge);
-        let mut edges_l = self.points.iter().rev()
-            .zip(self.points.iter().rev().skip(1))
-            .map(map_edge);
-
-        let mut boundary = vec![];
-
-        // Find all the boundary points
-
-        boundary.push(p_first);
 
         let mut edge_prev = edges_r.next().context("Expected at least one segment")?;
         for edge in edges_r {
@@ -72,16 +71,25 @@ impl Line {
             edge_prev = edge;
         }
 
-        boundary.push(p_half1);
-        boundary.push(p_half2);
+        // Find end line cap
+
+        let mut v_cap_end = edge_last.right().normalize() * thickness / 2.0;
+        for _ in 0..=cap_steps {
+            boundary.push(self.points[pts - 1] + v_cap_end);
+            v_cap_end = cap_rot * v_cap_end;
+        }
+
+        // Find the left edge
+
+        let mut edges_l = self.points.iter().rev()
+            .zip(self.points.iter().rev().skip(1))
+            .map(map_edge);
 
         let mut edge_prev = edges_l.next().context("Expected at least one segment")?;
         for edge in edges_l {
             boundary.push(edge_prev.link(&edge)?);
             edge_prev = edge;
         }
-
-        boundary.push(p_last);
 
         Contour::new(boundary)
     }
@@ -100,21 +108,10 @@ impl Circle {
             radius,
         }
     }
-}
 
-impl TryInto<Contour> for Circle {
-    type Error = anyhow::Error;
-
-    fn try_into(self) -> std::result::Result<Contour, Self::Error> {
+    pub fn to_contour(self, sides: usize) -> Result<Contour> {
+        ensure!(sides > 0);
         ensure!(self.radius > 0.0);
-
-        let sides = if self.radius < 0.5 {
-            12
-        } else if self.radius < 2.0 {
-            36
-        } else {
-            72
-        };
 
         let rot = na::Matrix3::new_rotation(TAU / sides as Float);
         let center = self.center.to_homogeneous();
@@ -256,15 +253,15 @@ mod tests {
         line.do_move(point![0.0, 0.0]).unwrap();
         line.do_line(point![0.0, 1.0]).unwrap();
 
-        let contour: Contour = line.do_enthicken(1.0).unwrap();
+        let contour: Contour = line.do_enthicken(1.0, 1).unwrap();
         let points: Vec<_> = contour.points().unwrap().collect();
 
         assert_eq!(points.len(), 4);
 
-        let d0 = distance(&points[0], &point![0.5, 0.0]);
-        let d1 = distance(&points[1], &point![0.5, 1.0]);
-        let d2 = distance(&points[2], &point![-0.5, 1.0]);
-        let d3 = distance(&points[3], &point![-0.5, 0.0]);
+        let d3 = distance(&points[0], &point![-0.5, 0.0]);
+        let d0 = distance(&points[1], &point![0.5, 0.0]);
+        let d1 = distance(&points[2], &point![0.5, 1.0]);
+        let d2 = distance(&points[3], &point![-0.5, 1.0]);
 
         assert!(d0 < E, "{d0} is not close to 0");
         assert!(d1 < E, "{d1} is not close to 0");

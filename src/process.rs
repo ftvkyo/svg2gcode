@@ -162,7 +162,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                         }
                     }
 
-                    contours.push(line.do_enthicken(ctx.get_stroke_width()?)?);
+                    contours.push(line.do_enthicken(ctx.get_stroke_width()?, 12)?);
 
                     break 'out;
                 }
@@ -182,7 +182,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                contours.push(contour::Circle::new(point![cx, cy], r).try_into()?);
+                contours.push(contour::Circle::new(point![cx, cy], r).to_contour(24)?);
 
                 // Save the original shape too
 

@@ -6,6 +6,7 @@ pub mod edge;
 
 pub type Float = f32;
 pub use std::f32::consts::TAU;
+pub use std::f32::consts::PI;
 pub const E: Float = 0.0001;
 
 pub type Vector = na::Vector2<Float>;

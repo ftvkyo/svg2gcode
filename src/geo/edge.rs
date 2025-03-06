@@ -3,7 +3,7 @@ use nalgebra as na;
 
 use crate::geo::E;
 
-use super::{Float, Point};
+use super::{Float, Point, Vector};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Turning {
@@ -26,13 +26,21 @@ impl Edge {
         }
     }
 
+    pub fn left(&self) -> Vector {
+        let v_self = self.end - self.start;
+        na::vector![-v_self.y, v_self.x]
+    }
+
+    pub fn right(&self) -> Vector {
+        let v_self = self.end - self.start;
+        na::vector![v_self.y, -v_self.x]
+    }
+
     /// Determine whether the edge sequence would "turn" left or right if `next` was the next point
     pub fn turning(&self, next: &Point) -> Turning {
-        let v_self = self.end - self.start;
-        let v_next = next - self.end;
-
         // Direction of "left"
-        let v_self_90 = na::vector![-v_self.y, v_self.x];
+        let v_self_90 = self.left().normalize();
+        let v_next = next - self.end;
         let dot = v_self_90.dot(&v_next);
 
         if dot.abs() < E {
@@ -45,9 +53,8 @@ impl Edge {
     }
 
     pub fn translate_right(&self, distance: Float) -> Self {
-        let v_self = self.end - self.start;
         // Direction of translation
-        let v_self_270 = na::vector![v_self.y, -v_self.x].normalize();
+        let v_self_270 = self.right().normalize();
 
         Self {
             start: self.start + v_self_270 * distance,
