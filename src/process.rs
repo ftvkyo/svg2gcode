@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::geo::{contour::{self, Contour}, Float};
+use crate::geo::{contour, Float};
 
 
 struct SvgContext {
@@ -92,7 +92,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
 
     let mut g_originals = Group::new()
         .set("opacity", "50%");
-    let mut g_contours: Vec<svg::node::element::Path> = vec![];
+    let mut contours: Vec<contour::Contour> = vec![];
 
     let mut content = String::new();
     for event in svg::open(file.as_ref(), &mut content)? {
@@ -151,8 +151,8 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                                 }
                             },
                             &Command::Close => {
-                                let area = line.do_close()?;
-                                g_contours.push(area.svg()?);
+                                let contour = line.do_close()?;
+                                contours.push(contour);
 
                                 break 'out;
                             },
@@ -162,8 +162,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                         }
                     }
 
-                    line.set_thickness(ctx.get_stroke_width()? + offset);
-                    g_contours.push(line.svg()?);
+                    contours.push(line.do_enthicken(ctx.get_stroke_width()? + offset)?);
 
                     break 'out;
                 }
@@ -186,7 +185,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 let r = r + offset / 2.0;
                 ensure!(r > 0.0, "Tried to make a circle with a negative radius");
 
-                g_contours.push(contour::Circle::new(point![cx, cy], r).svg()?);
+                contours.push(contour::Circle::new(point![cx, cy], r).try_into()?);
 
                 // Save the original shape too
 
@@ -203,7 +202,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
         }
     }
 
-    make_svg(ctx.get_view_box()?, g_contours, g_originals)
+    make_svg(ctx.get_view_box()?, contours, g_originals)
 }
 
 
@@ -237,14 +236,14 @@ fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Re
 }
 
 
-fn make_svg(view_box: &str, contours: Vec<svg::node::element::Path>, g_originals: Group) -> Result<svg::Document> {
+fn make_svg(view_box: &str, contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
     for contour in contours {
-        g_contours = g_contours.add(contour);
+        g_contours = g_contours.add(contour.svg()?);
     }
 
     let document = Document::new()
