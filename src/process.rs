@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::geo::{contour, Float};
+use crate::geo::{contour, shape, Float};
 
 
 struct SvgContext {
@@ -128,7 +128,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
             Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
                 let data = attrs.get("d").unwrap();
 
-                let mut line = contour::Line::empty();
+                let mut builder = shape::PathBuilder::new();
 
                 // Mwahahaha
                 'out: loop {
@@ -138,7 +138,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                                 ensure!(params.len() % 2 == 0);
                                 for p in params.chunks(2) {
                                     if let [x, y] = p {
-                                        line.do_move(point![*x, *y])?;
+                                        builder.add_moveto(point![*x, *y])?;
                                     }
                                 }
                             },
@@ -146,12 +146,12 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                                 ensure!(params.len() % 2 == 0);
                                 for p in params.chunks(2) {
                                     if let [x, y] = p {
-                                        line.do_line(point![*x, *y])?;
+                                        builder.add_lineto(point![*x, *y])?;
                                     }
                                 }
                             },
                             &Command::Close => {
-                                let contour = line.do_close()?;
+                                let contour = builder.into_contour()?;
                                 contours.push(contour);
 
                                 break 'out;
@@ -162,7 +162,8 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                         }
                     }
 
-                    contours.push(line.do_enthicken(ctx.get_stroke_width()?, 12)?);
+                    let line = builder.into_line(ctx.get_stroke_width()?)?;
+                    contours.push(line.into_contour(12)?);
 
                     break 'out;
                 }
@@ -182,7 +183,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                contours.push(contour::Circle::new(point![cx, cy], r).to_contour(24)?);
+                contours.push(shape::Circle::new(point![cx, cy], r).into_contour(24)?);
 
                 // Save the original shape too
 

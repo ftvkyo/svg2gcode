@@ -70,6 +70,8 @@ impl Edge {
         let other_dx = other.end.x - other.start.x;
         let other_dy = other.end.y - other.start.y;
 
+        // TODO: consider non-vertical & non-horizontal collinear cases
+
         if self_dy.abs() < E && other_dy.abs() < E {
             // Both lines are horizontal
             ensure!((self.start.y - other.start.y).abs() < E, "Got two non-collinear horizontal edges");

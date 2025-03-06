@@ -2,6 +2,7 @@ use nalgebra as na;
 
 pub mod contour;
 pub mod edge;
+pub mod shape;
 
 
 pub type Float = f32;
