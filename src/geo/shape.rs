@@ -61,9 +61,9 @@ pub struct Line {
 }
 
 impl Line {
-    pub fn into_contour(self, cap_steps: usize) -> Result<Contour> {
-        ensure!(cap_steps > 0);
-        let cap_rot = na::Rotation2::new(PI / cap_steps as f32);
+    pub fn into_contour(self, cap_segments: usize) -> Result<Contour> {
+        ensure!(cap_segments > 0);
+        let cap_rot = na::Rotation2::new(PI / cap_segments as f32);
 
         let Line {
             points,
@@ -80,7 +80,7 @@ impl Line {
         // Find start line cap
 
         let mut v_cap_start = edge_first.left().normalize() * thickness / 2.0;
-        for _ in 0..=cap_steps {
+        for _ in 0..=cap_segments {
             boundary.push(points[0] + v_cap_start);
             v_cap_start = cap_rot * v_cap_start;
         }
@@ -100,7 +100,7 @@ impl Line {
         // Find end line cap
 
         let mut v_cap_end = edge_last.right().normalize() * thickness / 2.0;
-        for _ in 0..=cap_steps {
+        for _ in 0..=cap_segments {
             boundary.push(points[points.len() - 1] + v_cap_end);
             v_cap_end = cap_rot * v_cap_end;
         }
@@ -135,16 +135,16 @@ impl Circle {
         }
     }
 
-    pub fn into_contour(self, sides: usize) -> Result<Contour> {
-        ensure!(sides > 0);
+    pub fn into_contour(self, segments: usize) -> Result<Contour> {
+        ensure!(segments > 0);
         ensure!(self.radius > 0.0);
 
-        let rot = na::Matrix3::new_rotation(TAU / sides as Float);
+        let rot = na::Matrix3::new_rotation(TAU / segments as Float);
         let center = self.center.to_homogeneous();
 
         let mut boundary = vec![];
         let mut v = na::vector![0.0, self.radius, 1.0];
-        for _ in 0..sides {
+        for _ in 0..segments {
             let p = center + v;
             boundary.push(na::point![p.x, p.y]);
             v = rot * v;

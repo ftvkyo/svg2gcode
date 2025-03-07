@@ -6,6 +6,7 @@ use clap::Parser;
 pub mod geo;
 pub mod process;
 
+
 #[derive(Parser)]
 pub struct Args {
     pub input: PathBuf,
@@ -14,6 +15,14 @@ pub struct Args {
     /// Grow every contour by this much
     #[clap(long, default_value = "0")]
     pub offset: geo::Float,
+
+    /// How many segments to use for line caps
+    #[clap(long, default_value = "12")]
+    pub segments_caps: usize,
+
+    /// How many segments to use for circles
+    #[clap(long, default_value = "24")]
+    pub segments_circles: usize,
 }
 
 
@@ -52,6 +61,8 @@ mod test_files {
             input: PathBuf::from(INDIR).join(input),
             output: PathBuf::from(OUTDIR).join(input),
             offset: 0.0,
+            segments_caps: 12,
+            segments_circles: 24,
         }
     }
 

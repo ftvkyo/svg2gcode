@@ -163,7 +163,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                     }
 
                     let line = builder.into_line(ctx.get_stroke_width()?)?;
-                    contours.push(line.into_contour(12)?);
+                    contours.push(line.into_contour(args.segments_caps)?);
 
                     break 'out;
                 }
@@ -183,7 +183,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                contours.push(shape::Circle::new(point![cx, cy], r).into_contour(24)?);
+                contours.push(shape::Circle::new(point![cx, cy], r).into_contour(args.segments_circles)?);
 
                 // Save the original shape too
 
