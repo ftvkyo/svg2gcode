@@ -130,21 +130,25 @@ mod tests {
     use Turning::*;
 
     #[test]
-    fn turning() {
+    fn turning() -> Result<()> {
         let v = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
 
-        assert_eq!(v.turning(&point![-1.0, -1.0]), Left);
-        assert_eq!(v.turning(&point![0.0, 2.0]), Collinear);
-        assert_eq!(v.turning(&point![1.0, 1.0]), Right);
+        ensure!(v.turning(&point![-1.0, -1.0]) == Left);
+        ensure!(v.turning(&point![0.0, 2.0]) == Collinear);
+        ensure!(v.turning(&point![1.0, 1.0]) == Right);
+
+        Ok(())
     }
 
     #[test]
-    fn linking() {
+    fn linking() -> Result<()> {
         let e1 = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
         let e2 = Edge::new(point![0.0, 1.0], point![1.0, 1.0]);
 
-        let link = e1.link(&e2).unwrap();
+        let link = e1.link(&e2)?;
 
-        assert_eq!(link, point![0.0, 1.0]);
+        ensure!(link == point![0.0, 1.0]);
+
+        Ok(())
     }
 }

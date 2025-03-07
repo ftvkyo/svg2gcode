@@ -55,34 +55,34 @@ mod test_files {
     }
 
     #[test]
-    fn mix() {
+    fn mix() -> Result<()> {
         let args = make_args("mix.svg");
-        run(args).unwrap();
+        run(args)
     }
 
     #[test]
-    fn mix_with_offset() {
+    fn mix_with_offset() -> Result<()> {
         let mut args = make_args("mix.svg");
         args.output.set_file_name("mix-with-offset.svg");
         args.offset = 1.5;
-        run(args).unwrap();
+        run(args)
     }
 
     #[test]
-    fn nested_groups() {
+    fn nested_groups() -> Result<()> {
         let args = make_args("nested-groups.svg");
-        run(args).unwrap();
+        run(args)
     }
 
     #[test]
-    fn separate_lines() {
+    fn separate_lines() -> Result<()> {
         let args = make_args("separate-lines.svg");
-        run(args).unwrap();
+        run(args)
     }
 
     #[test]
-    fn unclosed() {
+    fn unclosed() -> Result<()> {
         let args = make_args("unclosed.svg");
-        run(args).unwrap();
+        run(args)
     }
 }

@@ -164,25 +164,27 @@ mod tests {
     use super::*;
 
     #[test]
-    fn line_points() {
+    fn line_points() -> Result<()> {
         let line = PathBuilder::new()
-            .do_moveto(point![0.0, 0.0]).unwrap()
-            .do_lineto(point![0.0, 1.0]).unwrap()
-            .into_line(1.0).unwrap();
+            .do_moveto(point![0.0, 0.0])?
+            .do_lineto(point![0.0, 1.0])?
+            .into_line(1.0)?;
 
-        let contour: Contour = line.into_contour(1).unwrap();
-        let points: Vec<_> = contour.points().unwrap().collect();
+        let contour: Contour = line.into_contour(1)?;
+        let points: Vec<_> = contour.points()?.collect();
 
-        assert_eq!(points.len(), 4);
+        ensure!(points.len() == 4);
 
         let d3 = distance(&points[0], &point![-0.5, 0.0]);
         let d0 = distance(&points[1], &point![0.5, 0.0]);
         let d1 = distance(&points[2], &point![0.5, 1.0]);
         let d2 = distance(&points[3], &point![-0.5, 1.0]);
 
-        assert!(d0 < E, "{d0} is not close to 0");
-        assert!(d1 < E, "{d1} is not close to 0");
-        assert!(d2 < E, "{d2} is not close to 0");
-        assert!(d3 < E, "{d3} is not close to 0");
+        ensure!(d0 < E, "d0 {d0} is not close to 0");
+        ensure!(d1 < E, "d1 {d1} is not close to 0");
+        ensure!(d2 < E, "d2 {d2} is not close to 0");
+        ensure!(d3 < E, "d3 {d3} is not close to 0");
+
+        Ok(())
     }
 }

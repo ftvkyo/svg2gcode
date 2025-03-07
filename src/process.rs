@@ -126,13 +126,13 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
             /* Handle paths */
 
             Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
-                let data = attrs.get("d").unwrap();
+                let data = attrs.get("d").context("No 'd' attribute on a path?")?;
 
                 let mut builder = shape::PathBuilder::new();
 
                 // Mwahahaha
                 'out: loop {
-                    for command in Data::parse(data).unwrap().iter() {
+                    for command in Data::parse(data)?.iter() {
                         match command {
                             &Command::Move(Position::Absolute, ref params) => {
                                 ensure!(params.len() % 2 == 0);
