@@ -36,15 +36,15 @@ impl Contour {
         Ok(s)
     }
 
-    pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = Point>> {
-        Ok(self.boundary.clone().into_iter())
+    pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = &Point>> {
+        Ok(self.boundary.iter())
     }
 
     pub fn edges(&self) -> Result<impl Iterator<Item = Edge>> {
         let mut edge_starts = self.points()?.peekable();
-        let p0 = std::iter::once(edge_starts.peek().context("No points?")?.clone());
+        let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
         let edge_ends = self.points()?.skip(1).chain(p0);
-        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::new(p1, p2));
+        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::new(p1.clone(), p2.clone()));
         Ok(edges)
     }
 
