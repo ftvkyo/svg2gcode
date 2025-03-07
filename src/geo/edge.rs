@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::{ensure, Result};
 use nalgebra as na;
 
@@ -13,34 +15,62 @@ pub enum Turning {
 }
 
 #[derive(Clone, Debug)]
-pub struct Edge {
-    pub start: Point,
-    pub end: Point,
+pub struct Edge<'p> {
+    inner: (Cow<'p, Point>, Cow<'p, Point>),
 }
 
-impl Edge {
-    pub fn new(start: Point, end: Point) -> Self {
+impl From<(Point, Point)> for Edge<'_> {
+    fn from(value: (Point, Point)) -> Self {
         Self {
-            start,
-            end,
+            inner: (Cow::Owned(value.0), Cow::Owned(value.1)),
         }
     }
+}
 
+impl<'p> From<(&'p Point, &'p Point)> for Edge<'p> {
+    fn from(value: (&'p Point, &'p Point)) -> Self {
+        Self {
+            inner: (Cow::Borrowed(value.0), Cow::Borrowed(value.1)),
+        }
+    }
+}
+
+impl Edge<'_> {
     pub fn left(&self) -> Vector {
-        let v_self = self.end - self.start;
+        let v_self = *self.inner.1 - *self.inner.0;
         na::vector![-v_self.y, v_self.x]
     }
 
     pub fn right(&self) -> Vector {
-        let v_self = self.end - self.start;
+        let v_self = *self.inner.1 - *self.inner.0;
         na::vector![v_self.y, -v_self.x]
+    }
+
+    pub fn start(&self) -> &'_ Point {
+        self.inner.0.as_ref()
+    }
+
+    pub fn end(&self) -> &'_ Point {
+        self.inner.1.as_ref()
+    }
+
+    pub fn translate_right(&self, distance: Float) -> Edge<'static> {
+        // Direction of translation
+        let v_self_270 = self.right().normalize();
+
+        let start = *self.inner.0 + v_self_270 * distance;
+        let end = *self.inner.1 + v_self_270 * distance;
+
+        Edge {
+            inner: (Cow::Owned(start), Cow::Owned(end)),
+        }
     }
 
     /// Determine whether the edge sequence would "turn" left or right if `next` was the next point
     pub fn turning(&self, next: &Point) -> Turning {
         // Direction of "left"
         let v_self_90 = self.left().normalize();
-        let v_next = next - self.end;
+        let v_next = next - *self.inner.1;
         let dot = v_self_90.dot(&v_next);
 
         if dot.abs() < E {
@@ -52,47 +82,37 @@ impl Edge {
         }
     }
 
-    pub fn translate_right(&self, distance: Float) -> Self {
-        // Direction of translation
-        let v_self_270 = self.right().normalize();
-
-        Self {
-            start: self.start + v_self_270 * distance,
-            end: self.end + v_self_270 * distance,
-        }
-    }
-
     /// Finds a point to link the second point of `self` with the first point of `other` (meant to replace them)
     pub fn link(&self, other: &Self) -> Result<Point> {
-        let self_dx = self.end.x - self.start.x;
-        let self_dy = self.end.y - self.start.y;
+        let self_dx = self.inner.1.x - self.inner.0.x;
+        let self_dy = self.inner.1.y - self.inner.0.y;
 
-        let other_dx = other.end.x - other.start.x;
-        let other_dy = other.end.y - other.start.y;
+        let other_dx = other.inner.1.x - other.inner.0.x;
+        let other_dy = other.inner.1.y - other.inner.0.y;
 
         if self_dy.abs() < E && other_dy.abs() < E {
             // Both lines are horizontal
-            ensure!((self.start.y - other.start.y).abs() < E, "Got two non-collinear horizontal edges");
-            return Ok(na::center(&self.end, &other.start));
+            ensure!((self.inner.0.y - other.inner.0.y).abs() < E, "Got two non-collinear horizontal edges");
+            return Ok(na::center(&self.inner.1, &other.inner.0));
         }
 
         if self_dx.abs() < E && other_dx.abs() < E {
             // Both lines are vertical
-            ensure!((self.start.x - other.start.x).abs() < E, "Got two non-collinear vertical edges");
-            return Ok(na::center(&self.end, &other.start));
+            ensure!((self.inner.0.x - other.inner.0.x).abs() < E, "Got two non-collinear vertical edges");
+            return Ok(na::center(&self.inner.1, &other.inner.0));
         }
 
         if self_dx.abs() < E {
             // only `self` is vertical
-            let x = self.start.x;
-            let y = (x - other.start.x) * other_dy / other_dx + other.start.y;
+            let x = self.inner.0.x;
+            let y = (x - other.inner.0.x) * other_dy / other_dx + other.inner.0.y;
             return Ok(na::point![x, y]);
         }
 
         if other_dx.abs() < E {
             // only `other` is vertical
-            let x = other.start.x;
-            let y = (x - self.start.x) * self_dy / self_dx + self.start.y;
+            let x = other.inner.0.x;
+            let y = (x - self.inner.0.x) * self_dy / self_dx + self.inner.0.y;
             return Ok(na::point![x, y]);
         }
 
@@ -101,13 +121,13 @@ impl Edge {
 
         if feq!(self_m, other_m) {
             // The lines are parallel, compare their value at x == 0
-            let self_y = self_m * (- self.start.x) + self.start.y;
-            let other_y = other_m * (- other.start.x) + other.start.y;
+            let self_y = self_m * (- self.inner.0.x) + self.inner.0.y;
+            let other_y = other_m * (- other.inner.0.x) + other.inner.0.y;
             ensure!(feq!(self_y, other_y), "Got two parallel but not collinear edges");
         }
 
-        let x = (self.start.x * self_m - other.start.x * other_m - self.start.y + other.start.y) / (self_m - other_m);
-        let y = self_m * (x - self.start.x) + self.start.y;
+        let x = (self.inner.0.x * self_m - other.inner.0.x * other_m - self.inner.0.y + other.inner.0.y) / (self_m - other_m);
+        let y = self_m * (x - self.inner.0.x) + self.inner.0.y;
 
         return Ok(na::point![x, y]);
     }
@@ -122,7 +142,7 @@ mod tests {
 
     #[test]
     fn turning() -> Result<()> {
-        let v = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
+        let v = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
 
         ensure!(v.turning(&point![-1.0, -1.0]) == Left);
         ensure!(v.turning(&point![0.0, 2.0]) == Collinear);
@@ -133,8 +153,8 @@ mod tests {
 
     #[test]
     fn linking() -> Result<()> {
-        let e1 = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
-        let e2 = Edge::new(point![0.0, 1.0], point![1.0, 1.0]);
+        let e1 = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
+        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 1.0]));
 
         let link = e1.link(&e2)?;
 
@@ -146,20 +166,20 @@ mod tests {
     #[test]
     fn linking_special() -> Result<()> {
         // Two vertical unconnected edges
-        let e1 = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
-        let e2 = Edge::new(point![1.0, 0.0], point![1.0, 1.0]);
+        let e1 = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
+        let e2 = Edge::from((point![1.0, 0.0], point![1.0, 1.0]));
         let link = e1.link(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         // Two horizontal unconnected edges
-        let e1 = Edge::new(point![0.0, 0.0], point![1.0, 0.0]);
-        let e2 = Edge::new(point![0.0, 1.0], point![1.0, 1.0]);
+        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 0.0]));
+        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 1.0]));
         let link = e1.link(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         // Two collinear unconnected edges
-        let e1 = Edge::new(point![0.0, 0.0], point![1.0, 1.0]);
-        let e2 = Edge::new(point![0.0, 1.0], point![1.0, 2.0]);
+        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 1.0]));
+        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 2.0]));
         let link = e1.link(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 

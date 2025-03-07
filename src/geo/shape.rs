@@ -150,10 +150,10 @@ impl Shape for Line {
         let cap_segments = (cap_circumference / resolution).ceil() as usize;
         let cap_rot = na::Rotation2::new(PI / cap_segments as f32);
 
-        let map_edge = |(p1, p2): (&Point, &Point)| Edge::new(p1.clone(), p2.clone()).translate_right(thickness / 2.0);
+        let map_edge = |(p1, p2): (&Point, &Point)| Edge::from((p1, p2)).translate_right(thickness / 2.0);
 
-        let edge_first = Edge::new(points[0].clone(), points[1].clone());
-        let edge_last = Edge::new(points[points.len() - 2].clone(), points[points.len() - 1].clone());
+        let edge_first = Edge::from((points[0], points[1]));
+        let edge_last = Edge::from((points[points.len() - 2], points[points.len() - 1]));
 
         let mut boundary = vec![];
 
@@ -217,7 +217,7 @@ impl ConvexPolygon {
         let mut turned_right = false;
 
         for (e1, e2) in s.edge_pairs()? {
-            match e1.turning(&e2.end) {
+            match e1.turning(e2.end()) {
                 Turning::Left => turned_left = true,
                 Turning::Right => turned_right = true,
                 Turning::Collinear => {},
@@ -242,7 +242,7 @@ impl ConvexPolygon {
         let mut edge_starts = self.points()?.peekable();
         let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
         let edge_ends = self.points()?.skip(1).chain(p0);
-        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::new(p1.clone(), p2.clone()));
+        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2)));
         Ok(edges)
     }
 
