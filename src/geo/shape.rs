@@ -173,7 +173,7 @@ impl Shape for Line {
 
         let mut edge_prev = edges_r.next().context("Expected at least one segment")?;
         for edge in edges_r {
-            boundary.push(edge_prev.link(&edge)?);
+            boundary.push(edge_prev.find_intersection(&edge)?);
             edge_prev = edge;
         }
 
@@ -193,7 +193,7 @@ impl Shape for Line {
 
         let mut edge_prev = edges_l.next().context("Expected at least one segment")?;
         for edge in edges_l {
-            boundary.push(edge_prev.link(&edge)?);
+            boundary.push(edge_prev.find_intersection(&edge)?);
             edge_prev = edge;
         }
 
@@ -277,7 +277,7 @@ impl Shape for ConvexPolygon {
         let mut boundary = vec![];
 
         for edge in edges {
-            boundary.push(edge_prev.link(&edge)?);
+            boundary.push(edge_prev.find_intersection(&edge)?);
             edge_prev = edge;
         }
 

@@ -82,8 +82,15 @@ impl Edge<'_> {
         }
     }
 
+    /// Check if two edges intersect or at least touch each other
+    pub fn intersects(&self, other: &Self) -> bool {
+        // Two edges intersect if for both edges, both of its points are on different sides of the other edge.
+        self.turning(other.start()) != self.turning(other.end())
+        && other.turning(self.start()) != other.turning(self.end())
+    }
+
     /// Finds a point to link the second point of `self` with the first point of `other` (meant to replace them)
-    pub fn link(&self, other: &Self) -> Result<Point> {
+    pub fn find_intersection(&self, other: &Self) -> Result<Point> {
         let self_dx = self.inner.1.x - self.inner.0.x;
         let self_dy = self.inner.1.y - self.inner.0.y;
 
@@ -152,11 +159,24 @@ mod tests {
     }
 
     #[test]
+    fn intersecting() {
+        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 1.0]));
+        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 0.0]));
+
+        assert!(e1.intersects(&e2));
+
+        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 1.0]));
+        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 2.0]));
+
+        assert!(!e1.intersects(&e2));
+    }
+
+    #[test]
     fn linking() -> Result<()> {
         let e1 = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
         let e2 = Edge::from((point![0.0, 1.0], point![1.0, 1.0]));
 
-        let link = e1.link(&e2)?;
+        let link = e1.find_intersection(&e2)?;
 
         ensure!(link == point![0.0, 1.0]);
 
@@ -168,19 +188,19 @@ mod tests {
         // Two vertical unconnected edges
         let e1 = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
         let e2 = Edge::from((point![1.0, 0.0], point![1.0, 1.0]));
-        let link = e1.link(&e2);
+        let link = e1.find_intersection(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         // Two horizontal unconnected edges
         let e1 = Edge::from((point![0.0, 0.0], point![1.0, 0.0]));
         let e2 = Edge::from((point![0.0, 1.0], point![1.0, 1.0]));
-        let link = e1.link(&e2);
+        let link = e1.find_intersection(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         // Two collinear unconnected edges
         let e1 = Edge::from((point![0.0, 0.0], point![1.0, 1.0]));
         let e2 = Edge::from((point![0.0, 1.0], point![1.0, 2.0]));
-        let link = e1.link(&e2);
+        let link = e1.find_intersection(&e2);
         ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         Ok(())
