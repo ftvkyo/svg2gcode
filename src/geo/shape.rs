@@ -173,7 +173,12 @@ impl Shape for Line {
 
         let mut edge_prev = edges_r.next().context("Expected at least one segment")?;
         for edge in edges_r {
-            boundary.push(edge_prev.find_intersection(&edge)?);
+            if edge_prev.intersects(&edge) {
+                boundary.push(edge_prev.find_intersection(&edge)?);
+            } else {
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
+            }
+
             edge_prev = edge;
         }
 
@@ -193,7 +198,12 @@ impl Shape for Line {
 
         let mut edge_prev = edges_l.next().context("Expected at least one segment")?;
         for edge in edges_l {
-            boundary.push(edge_prev.find_intersection(&edge)?);
+            if edge_prev.intersects(&edge) {
+                boundary.push(edge_prev.find_intersection(&edge)?);
+            } else {
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
+            }
+
             edge_prev = edge;
         }
 
@@ -205,13 +215,17 @@ impl Shape for Line {
 pub struct ConvexPolygon {
     /// A closed loop of points, ordered counter-clockwise
     boundary: Vec<Point>,
+    resolution: Option<Float>,
 }
 
 impl ConvexPolygon {
     pub fn new(boundary: Vec<Point>) -> Result<Self> {
         ensure!(boundary.len() >= 3, "Need at least 3 points for a polygon");
 
-        let mut s = Self { boundary };
+        let mut s = Self {
+            boundary,
+            resolution: None,
+        };
 
         let mut turned_left = false;
         let mut turned_right = false;
@@ -256,7 +270,11 @@ impl ConvexPolygon {
 }
 
 impl Shape for ConvexPolygon {
-    fn set_resolution(&mut self, _resolution: Option<Float>) -> Result<()> {
+    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
+        if let Some(resolution) = resolution {
+            ensure!(resolution > 0.0);
+        }
+        self.resolution = resolution;
         Ok(())
     }
 
@@ -267,8 +285,9 @@ impl Shape for ConvexPolygon {
 
         ensure!(offset > 0.0);
 
+        let resolution = self.resolution.unwrap_or(1.0);
+
         // TODO: delete edges when things become self-intersecting
-        // TODO: rounded links?
 
         let mut edges = self.edges()?.map(|e| e.translate_right(offset)).peekable();
         let mut edge_prev = edges.peek().context("No edges?")?.clone();
@@ -277,7 +296,7 @@ impl Shape for ConvexPolygon {
         let mut boundary = vec![];
 
         for edge in edges {
-            boundary.push(edge_prev.find_intersection(&edge)?);
+            boundary.extend(edge_prev.find_arc(&edge, offset, resolution)?);
             edge_prev = edge;
         }
 

@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 
-use anyhow::{ensure, Result};
+use anyhow::{bail, ensure, Result};
 use nalgebra as na;
 
-use crate::{feq, geo::E};
+use crate::{feq, geo::{E, PI, TAU}};
 
 use super::{Float, Point, Vector};
 
@@ -54,6 +54,12 @@ impl Edge<'_> {
         self.inner.1.as_ref()
     }
 
+    pub fn angle(&self, other: &Self) -> Float {
+        let v1 = *self.inner.1 - *self.inner.0;
+        let v2 = *other.inner.1 - *other.inner.0;
+        v1.angle(&v2)
+    }
+
     pub fn translate_right(&self, distance: Float) -> Edge<'static> {
         // Direction of translation
         let v_self_270 = self.right().normalize();
@@ -89,7 +95,7 @@ impl Edge<'_> {
         && other.turning(self.start()) != other.turning(self.end())
     }
 
-    /// Finds a point to link the second point of `self` with the first point of `other` (meant to replace them)
+    /// Finds a point where lines defined by `self` and `other` intersect
     pub fn find_intersection(&self, other: &Self) -> Result<Point> {
         let self_dx = self.inner.1.x - self.inner.0.x;
         let self_dy = self.inner.1.y - self.inner.0.y;
@@ -137,6 +143,41 @@ impl Edge<'_> {
         let y = self_m * (x - self.inner.0.x) + self.inner.0.y;
 
         return Ok(na::point![x, y]);
+    }
+
+    /// Finds a series of points to smoothly connect the end of `self` to the start of `other`
+    pub fn find_arc(&self, other: &Self, radius: Float, resolution: Float) -> Result<Vec<Point>> {
+        ensure!(radius > 0.0);
+        ensure!(resolution > 0.0);
+
+        // 1. Determine whether the arc is clockwise or counterclockwise
+
+        let turn_angle = self.angle(other);
+        let arc_angle = match self.turning(other.start()) {
+            Turning::Left => turn_angle,
+            Turning::Collinear => bail!("Tried to make a smooth link for connected edges"),
+            Turning::Right => - turn_angle,
+        };
+
+        // 2. Determine arc length
+
+        let arc_length = radius * arc_angle.abs();
+        let arc_segments = (arc_length / resolution).ceil() as usize;
+        let arc_rot = na::Rotation2::new(arc_angle / arc_segments as Float);
+
+        // 3. Calculate the points
+
+        let origin = self.end() + self.left().normalize() * radius;
+
+        let mut points = Vec::with_capacity(arc_segments + 1);
+
+        let mut v_rot = self.right().normalize() * radius;
+        for _ in 0..=arc_segments {
+            points.push(origin + v_rot);
+            v_rot = arc_rot * v_rot;
+        }
+
+        Ok(points)
     }
 }
 
