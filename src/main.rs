@@ -11,7 +11,8 @@ pub struct Args {
     pub input: PathBuf,
     pub output: PathBuf,
 
-    #[clap(default_value = "0")]
+    /// Grow every contour by this much
+    #[clap(long, default_value = "0")]
     pub offset: geo::Float,
 }
 
@@ -33,7 +34,7 @@ fn run(args: Args) -> Result<()> {
         ensure!(outdir.is_dir(), "{outdir:?} should be a directory");
     }
 
-    let document = process::process(&args.input, args.offset)?;
+    let document = process::process(&args)?;
     svg::save(&args.output, &document)?;
     Ok(())
 }

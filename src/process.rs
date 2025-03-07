@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::geo::{contour, shape, Float};
+use crate::{geo::{contour, shape, Float}, Args};
 
 
 struct SvgContext {
@@ -87,7 +87,7 @@ impl SvgContext {
 }
 
 
-pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::Document> {
+pub fn process(args: &Args) -> Result<svg::Document> {
     let mut ctx = SvgContext::new();
 
     let mut g_originals = Group::new()
@@ -95,7 +95,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
     let mut contours: Vec<contour::Contour> = vec![];
 
     let mut content = String::new();
-    for event in svg::open(file.as_ref(), &mut content)? {
+    for event in svg::open(&args.input, &mut content)? {
         match event {
 
             /* Ignore some events */
@@ -201,7 +201,7 @@ pub fn process(file: impl AsRef<std::path::Path>, offset: Float) -> Result<svg::
     }
 
     for contour in &mut contours {
-        contour.grow(offset)?;
+        contour.grow(args.offset)?;
     }
 
     make_svg(ctx.get_view_box()?, contours, g_originals)
