@@ -8,29 +8,14 @@ use crate::{geo::{contour, shape, Float}, Args};
 
 
 struct SvgContext {
-    view_box: Option<String>,
     stroke_width: Vec<Option<Float>>,
 }
 
 impl SvgContext {
     pub fn new() -> Self {
         Self {
-            view_box: None,
             stroke_width: vec![],
         }
-    }
-
-    pub fn svg_push(&mut self, attrs: &HashMap<String, svg::node::Value>) -> Result<()> {
-        for (attr, val) in attrs {
-            match attr.as_str() {
-                "viewBox" => {
-                    ensure!(self.view_box.replace(val.to_string()).is_none());
-                },
-                _ => {}
-            }
-        }
-
-        Ok(())
     }
 
     pub fn group_push(&mut self, attrs: &HashMap<String, svg::node::Value>) -> Result<()> {
@@ -72,10 +57,6 @@ impl SvgContext {
         Ok(())
     }
 
-    pub fn get_view_box(&self) -> Result<&str> {
-        self.view_box.as_ref().map(|s| s.as_str()).context("No view box?")
-    }
-
     pub fn get_stroke_width(&self) -> Result<Float> {
         let val = self.stroke_width.iter().filter_map(|x| *x).last();
         if let Some(val) = val {
@@ -105,16 +86,10 @@ pub fn process(args: &Args) -> Result<svg::Document> {
             | Event::Instruction(..)
             | Event::Declaration(..)
             | Event::Text(..)
+            | Event::Tag(tag::SVG, ..)
             | Event::Tag(tag::Description, ..)
             | Event::Tag(tag::Text, ..)
             | Event::Tag(tag::Title, ..) => {},
-
-            /* Handle svg opening and closing */
-
-            Event::Tag(tag::SVG, tag::Type::Start, attrs) => {
-                ctx.svg_push(&attrs)?;
-            },
-            Event::Tag(tag::SVG, tag::Type::End, ..) => {},
 
             /* Handle group opening and closing */
 
@@ -210,7 +185,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
         contour.grow(args.offset)?;
     }
 
-    make_svg(ctx.get_view_box()?, contours, g_originals)
+    make_svg(contours, g_originals)
 }
 
 
@@ -261,20 +236,78 @@ fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Re
 }
 
 
-fn make_svg(view_box: &str, contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::Document> {
+fn make_gizmo(size: Float) -> Group {
+    use svg::node::element;
+
+    let circle = element::Circle::new()
+        .set("cx", 0)
+        .set("cy", 0)
+        .set("r", size / 2.0)
+        .set("fill", "none")
+        .set("stroke", "blue")
+        .set("stroke-width", 5)
+        .set("vector-effect", "non-scaling-stroke")
+        .set("opacity", "25%");
+
+    let x_axis = element::Line::new()
+        .set("x1", 0)
+        .set("y1", 0)
+        .set("x2", size)
+        .set("y2", 0)
+        .set("stroke", "red")
+        .set("stroke-width", 1)
+        .set("vector-effect", "non-scaling-stroke");
+
+    let y_axis = element::Line::new()
+        .set("x1", 0)
+        .set("y1", 0)
+        .set("x2", 0)
+        .set("y2", size)
+        .set("stroke", "green")
+        .set("stroke-width", 1)
+        .set("vector-effect", "non-scaling-stroke");
+
+    Group::new()
+        .add(circle)
+        .add(x_axis)
+        .add(y_axis)
+}
+
+
+fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
+    let mut min_x: Float = 0.0;
+    let mut max_x: Float = 0.0;
+    let mut min_y: Float = 0.0;
+    let mut max_y: Float = 0.0;
+
     for contour in contours {
+        for point in contour.points()? {
+            min_x = min_x.min(point.x);
+            max_x = max_x.max(point.x);
+            min_y = min_y.min(point.y);
+            max_y = max_y.max(point.y);
+        }
+
         g_contours = g_contours.add(contour.svg()?);
     }
+
+    let gizmo_size: Float = 5.0;
+
+    min_x -= gizmo_size;
+    max_x += gizmo_size;
+    min_y -= gizmo_size;
+    max_y += gizmo_size;
 
     let document = Document::new()
         .add(g_originals)
         .add(g_contours)
-        .set("viewBox", view_box);
+        .add(make_gizmo(gizmo_size))
+        .set("viewBox", (min_x, min_y, max_x - min_x, max_y - min_y));
 
     Ok(document)
 }
