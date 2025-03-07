@@ -84,29 +84,15 @@ impl Edge {
             return Ok(na::center(&self.end, &other.start));
         }
 
-        if self_dy.abs() < E {
-            // `self` is horizontal
-            let y = self.start.y;
-            let x = (y - other.start.y) * other_dx / other_dy + other.start.x;
-            return Ok(na::point![x, y]);
-        }
-
         if self_dx.abs() < E {
-            // `self` is vertical
+            // only `self` is vertical
             let x = self.start.x;
             let y = (x - other.start.x) * other_dy / other_dx + other.start.y;
             return Ok(na::point![x, y]);
         }
 
-        if other_dy.abs() < E {
-            // `other` is horizontal
-            let y = other.start.y;
-            let x = (y - self.start.y) * self_dx / self_dy + self.start.x;
-            return Ok(na::point![x, y]);
-        }
-
         if other_dx.abs() < E {
-            // `other` is vertical
+            // only `other` is vertical
             let x = other.start.x;
             let y = (x - self.start.x) * self_dy / self_dx + self.start.y;
             return Ok(na::point![x, y]);
