@@ -1,9 +1,0 @@
-<svg viewBox="0 0 60 60" xmlns="http://www.w3.org/2000/svg">
-<g style="stroke-width:5">
-<path d="M 10,10 L 20,30 L 40,30 L 50,50" fill="none" stroke="black"/>
-<g style="stroke-width:2">
-<path d="M 15,5 L 25,25 L 45,25" fill="none" stroke="black"/>
-<path d="M 15,35 L 35,35" fill="none" stroke="black"/>
-</g>
-</g>
-</svg>

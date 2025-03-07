@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
+use log::warn;
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::{geo::{contour, shape::{self, Shape}, Float}, Args};
+use crate::{geo::{contour::{self, Contour}, shape::{self, Shape}, Float}, Args};
 
 
 struct SvgContext {
@@ -86,6 +87,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
             | Event::Instruction(..)
             | Event::Declaration(..)
             | Event::Text(..)
+            | Event::Comment(..)
             | Event::Tag(tag::SVG, ..)
             | Event::Tag(tag::Description, ..)
             | Event::Tag(tag::Text, ..)
@@ -110,31 +112,52 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                 // Mwahahaha
                 'out: loop {
                     for command in Data::parse(data)?.iter() {
+                        use Command::*;
+                        use Position::*;
+
                         match command {
-                            &Command::Move(Position::Absolute, ref params) => {
+                            | &Move(_, ref params)
+                            | &Line(_, ref params) => {
                                 ensure!(params.len() % 2 == 0);
-                                for p in params.chunks(2) {
+                                let pts = params.chunks(2).filter_map(|p| {
                                     if let [x, y] = p {
-                                        builder.add_moveto(point![*x, *y])?;
+                                        Some(point![*x, *y])
+                                    } else {
+                                        None
                                     }
+                                });
+
+                                match command {
+                                    Command::Move(Absolute, ..) => builder.add_moveto(pts)?,
+                                    Command::Move(Relative, ..) => builder.add_moveby(pts)?,
+                                    Command::Line(Absolute, ..) => builder.add_lineto(pts)?,
+                                    Command::Line(Relative, ..) => builder.add_lineby(pts)?,
+                                    _ => unreachable!(),
                                 }
                             },
-                            &Command::Line(Position::Absolute, ref params) => {
-                                ensure!(params.len() % 2 == 0);
-                                for p in params.chunks(2) {
-                                    if let [x, y] = p {
-                                        builder.add_lineto(point![*x, *y])?;
-                                    }
-                                }
+                            &VerticalLine(Absolute, ref params) => {
+                                let x = builder.get_position().x;
+                                builder.add_lineto(params.iter().map(|y| point![x, *y]))?;
                             },
-                            &Command::Close => {
-                                let polygon = builder.into_convex_polygon()?;
+                            &VerticalLine(Relative, ref params) => {
+                                builder.add_lineby(params.iter().map(|y| point![0.0, *y]))?;
+                            },
+                            &HorizontalLine(Absolute, ref params) => {
+                                let y = builder.get_position().y;
+                                builder.add_lineto(params.iter().map(|x| point![*x, y]))?;
+                            },
+                            &HorizontalLine(Relative, ref params) => {
+                                builder.add_lineby(params.iter().map(|x| point![*x, 0.0]))?;
+                            },
+                            &Close => {
+                                let mut polygon = builder.into_convex_polygon()?;
+                                polygon.set_resolution(args.resolution_lines)?;
                                 shapes.push(Box::new(polygon));
 
                                 break 'out;
                             },
                             command => {
-                                eprintln!("Unsupported path command {command:?}");
+                                bail!("Unsupported path command {command:?}");
                             },
                         }
                     }
@@ -174,25 +197,26 @@ pub fn process(args: &Args) -> Result<svg::Document> {
             /* Everything else is not supported */
 
             event => {
-                eprintln!("Unsupported event {event:?}");
+                warn!("Unsupported event {event:?}");
             }
         }
     }
 
     for mut line in lines {
-        line.set_resolution(args.resolution_caps)?;
+        line.set_resolution(args.resolution_lines)?;
         shapes.push(Box::new(line));
     }
 
-    // TODO: perform shape merging here
+    let mut repo = contour::Repository::new();
 
-    let mut contours = Vec::with_capacity(shapes.len());
     for mut shape in shapes {
         shape.grow(args.offset)?;
-        contours.push(shape.as_contour()?);
+        repo.add(Contour::new(shape)?)?;
     }
 
-    make_svg(contours, g_originals)
+    repo.merge_all()?;
+
+    make_svg(repo.contours(), g_originals)
 }
 
 
@@ -233,9 +257,10 @@ fn fix_attributes<T: svg::Node>(mut node: T, original_attrs: svg::node::Attribut
 
 
 fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Result<Float>) -> Result<T> {
+    let none = svg::node::Value::from("none");
     let attrs = node.get_attributes_mut().context("No attributes?")?;
 
-    if !attrs.contains_key("stroke-width") {
+    if !attrs.contains_key("stroke-width") && attrs.get("stroke") != Some(&none) {
         attrs.insert("stroke-width".to_string(), get_stroke_width()?.into());
     }
 
@@ -293,14 +318,14 @@ fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::
     let mut max_y: Float = 0.0;
 
     for contour in contours {
-        for point in contour.points()? {
+        for point in contour.points() {
             min_x = min_x.min(point.x);
             max_x = max_x.max(point.x);
             min_y = min_y.min(point.y);
             max_y = max_y.max(point.y);
         }
 
-        g_contours = g_contours.add(contour.svg()?);
+        g_contours = g_contours.add(contour.svg());
     }
 
     let gizmo_size: Float = 5.0;

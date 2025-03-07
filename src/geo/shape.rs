@@ -1,7 +1,8 @@
 use anyhow::{bail, ensure, Context, Result};
+use log::info;
 use nalgebra as na;
 
-use crate::{feq, geo::{contour::Contour, edge::Edge}, p2eq};
+use crate::{feq, geo::edge::Edge, p2eq};
 
 use super::{edge::Turning, Float, Point, PI, TAU};
 
@@ -9,7 +10,8 @@ use super::{edge::Turning, Float, Point, PI, TAU};
 pub trait Shape {
     fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()>;
     fn grow(&mut self, offset: Float) -> Result<()>;
-    fn as_contour(&self) -> Result<Contour>;
+    fn boundary(&self) -> Result<Vec<Point>>;
+    fn contains(&self, p: &Point) -> Result<bool>;
 }
 
 
@@ -24,25 +26,49 @@ impl PathBuilder {
         }
     }
 
-    pub fn add_moveto(&mut self, p: Point) -> Result<()> {
+    pub fn get_position(&self) -> Point {
+        self.points.last().cloned().unwrap_or(na::point![0.0, 0.0])
+    }
+
+    pub fn add_moveto(&mut self, pts: impl Iterator<Item = Point>) -> Result<()> {
         ensure!(self.points.len() == 0, "Move is only supported as the first command");
-        self.points.push(p);
+        self.points.extend(pts);
+        Ok(())
+    }
+
+    pub fn add_moveby(&mut self, pts: impl Iterator<Item = Point>) -> Result<()> {
+        ensure!(self.points.len() == 0, "Move is only supported as the first command");
+
+        for p in pts {
+            self.points.push(self.get_position() + na::vector![p.x, p.y]);
+        }
+
         Ok(())
     }
 
     pub fn do_moveto(mut self, p: Point) -> Result<Self> {
-        self.add_moveto(p)?;
+        self.add_moveto(std::iter::once(p))?;
         Ok(self)
     }
 
-    pub fn add_lineto(&mut self, p: Point) -> Result<()> {
+    pub fn add_lineto(&mut self, pts: impl Iterator<Item = Point>) -> Result<()> {
         ensure!(self.points.len() > 0, "Line is only supported as a follow-up command");
-        self.points.push(p);
+        self.points.extend(pts);
+        Ok(())
+    }
+
+    pub fn add_lineby(&mut self, pts: impl Iterator<Item = Point>) -> Result<()> {
+        ensure!(self.points.len() > 0, "Line is only supported as a follow-up command");
+
+        for p in pts {
+            self.points.push(self.get_position() + na::vector![p.x, p.y]);
+        }
+
         Ok(())
     }
 
     pub fn do_lineto(mut self, p: Point) -> Result<Self> {
-        self.add_lineto(p)?;
+        self.add_lineto(std::iter::once(p))?;
         Ok(self)
     }
 
@@ -81,6 +107,12 @@ impl Line {
     pub fn point_last(&self) -> &Point {
         assert!(self.points.len() >= 2);
         &self.points[self.points.len() - 1]
+    }
+
+    pub fn segments(&self) -> Result<impl Iterator<Item = Edge>> {
+        let edge_starts = self.points.iter();
+        let edge_ends = self.points[1..].iter();
+        Ok(edge_starts.zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2))))
     }
 
     /// Try to connect `other` to `self`.
@@ -137,7 +169,7 @@ impl Shape for Line {
         Ok(())
     }
 
-    fn as_contour(&self) -> Result<Contour> {
+    fn boundary(&self) -> Result<Vec<Point>> {
         let Line {
             points,
             thickness,
@@ -146,7 +178,8 @@ impl Shape for Line {
 
         let resolution = resolution.unwrap_or(1.0);
 
-        let cap_circumference = PI * self.thickness / 2.0;
+        let cap_radius = self.thickness / 2.0;
+        let cap_circumference = PI * cap_radius;
         let cap_segments = (cap_circumference / resolution).ceil() as usize;
         let cap_rot = na::Rotation2::new(PI / cap_segments as f32);
 
@@ -173,7 +206,7 @@ impl Shape for Line {
 
         let mut edge_prev = edges_r.next().context("Expected at least one segment")?;
         for edge in edges_r {
-            if edge_prev.intersects(&edge) {
+            if edge_prev.crosses(&edge) {
                 boundary.push(edge_prev.find_intersection(&edge)?);
             } else {
                 boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
@@ -198,7 +231,7 @@ impl Shape for Line {
 
         let mut edge_prev = edges_l.next().context("Expected at least one segment")?;
         for edge in edges_l {
-            if edge_prev.intersects(&edge) {
+            if edge_prev.crosses(&edge) {
                 boundary.push(edge_prev.find_intersection(&edge)?);
             } else {
                 boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
@@ -207,7 +240,17 @@ impl Shape for Line {
             edge_prev = edge;
         }
 
-        Ok(Contour::from_ccwise_boundary(boundary))
+        Ok(boundary)
+    }
+
+    fn contains(&self, p: &Point) -> Result<bool> {
+        for seg in self.segments()? {
+            if seg.distance(p) <= self.thickness / 2.0 {
+                return Ok(true)
+            }
+        }
+
+        Ok(false)
     }
 }
 
@@ -230,7 +273,7 @@ impl ConvexPolygon {
         let mut turned_left = false;
         let mut turned_right = false;
 
-        for (e1, e2) in s.edge_pairs()? {
+        for (e1, e2) in get_boundary_edge_pairs(&s.boundary)? {
             match e1.turning(e2.end()) {
                 Turning::Left => turned_left = true,
                 Turning::Right => turned_right = true,
@@ -239,7 +282,7 @@ impl ConvexPolygon {
         }
 
         if turned_right && !turned_left {
-            eprintln!("Boundary winding is backwards. Please fix.");
+            info!("Boundary winding is backwards. Fixing.");
             s.boundary.reverse();
         } else if turned_right {
             bail!("Boundary is not convex.");
@@ -250,22 +293,6 @@ impl ConvexPolygon {
 
     pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = &Point>> {
         Ok(self.boundary.iter())
-    }
-
-    pub fn edges(&self) -> Result<impl Iterator<Item = Edge>> {
-        let mut edge_starts = self.points()?.peekable();
-        let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
-        let edge_ends = self.points()?.skip(1).chain(p0);
-        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2)));
-        Ok(edges)
-    }
-
-    pub fn edge_pairs(&self) -> Result<impl Iterator<Item = (Edge, Edge)>> {
-        let mut edges_a = self.edges()?.peekable();
-        let e0 = std::iter::once(edges_a.peek().context("No edges?")?.clone());
-        let edges_b = self.edges()?.skip(1).chain(e0);
-        let edges = edges_a.into_iter().zip(edges_b);
-        Ok(edges)
     }
 }
 
@@ -289,7 +316,7 @@ impl Shape for ConvexPolygon {
 
         // TODO: delete edges when things become self-intersecting
 
-        let mut edges = self.edges()?.map(|e| e.translate_right(offset)).peekable();
+        let mut edges = get_boundary_edges(&self.boundary)?.map(|e| e.translate_right(offset)).peekable();
         let mut edge_prev = edges.peek().context("No edges?")?.clone();
         let edges = edges.skip(1).chain(std::iter::once(edge_prev.clone()));
 
@@ -305,8 +332,12 @@ impl Shape for ConvexPolygon {
         Ok(())
     }
 
-    fn as_contour(&self) -> Result<Contour> {
-        Ok(Contour::from_ccwise_boundary(self.boundary.clone()))
+    fn boundary(&self) -> Result<Vec<Point>> {
+        Ok(self.boundary.clone())
+    }
+
+    fn contains(&self, p: &Point) -> Result<bool> {
+        Ok(get_boundary_edges(&self.boundary)?.all(|e| e.turning(p) != Turning::Right))
     }
 }
 
@@ -343,7 +374,7 @@ impl Shape for Circle {
         Ok(())
     }
 
-    fn as_contour(&self) -> Result<Contour> {
+    fn boundary(&self) -> Result<Vec<Point>> {
         let Circle {
             center,
             radius,
@@ -364,8 +395,29 @@ impl Shape for Circle {
             v = rot * v;
         }
 
-        Ok(Contour::from_ccwise_boundary(boundary))
+        Ok(boundary)
     }
+
+    fn contains(&self, p: &Point) -> Result<bool> {
+        Ok((self.center - p).magnitude() <= self.radius)
+    }
+}
+
+
+pub fn get_boundary_edges(boundary: &Vec<Point>) -> Result<impl Iterator<Item = Edge>> {
+    let mut edge_starts = boundary.iter().peekable();
+    let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
+    let edge_ends = boundary.iter().skip(1).chain(p0);
+    let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2)));
+    Ok(edges)
+}
+
+pub fn get_boundary_edge_pairs(boundary: &Vec<Point>) -> Result<impl Iterator<Item = (Edge, Edge)>> {
+    let mut edges_a = get_boundary_edges(boundary)?.peekable();
+    let e0 = std::iter::once(edges_a.peek().context("No edges?")?.clone());
+    let edges_b = get_boundary_edges(boundary)?.skip(1).chain(e0);
+    let edges = edges_a.into_iter().zip(edges_b);
+    Ok(edges)
 }
 
 
@@ -373,9 +425,68 @@ impl Shape for Circle {
 mod tests {
     use nalgebra::{point, distance};
 
-    use crate::geo::E;
+    use crate::{geo::{contour::Contour, E}, poly};
 
     use super::*;
+
+    fn check_winding(boundary: &Vec<Point>) -> Result<()> {
+        let mut turned_left = false;
+        let mut turned_right = false;
+
+        for (e1, e2) in get_boundary_edge_pairs(boundary)? {
+            match e1.turning(e2.end()) {
+                Turning::Left => turned_left = true,
+                Turning::Right => turned_right = true,
+                Turning::Collinear => {},
+            }
+        }
+
+        if turned_right && !turned_left {
+            bail!("Boundary winding is backwards.");
+        } else if turned_right {
+            bail!("Boundary is not convex.");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn line_winding() -> Result<()> {
+        let mut line = PathBuilder::new()
+            .do_moveto(point![0.0, 0.0])?
+            .do_lineto(point![0.0, 1.0])?
+            .into_line(1.0)?;
+
+        line.set_resolution(Some(5.0))?;
+
+        check_winding(&line.boundary()?)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn circle_winding() -> Result<()> {
+        let circle = Circle::new(point![0.0, 0.0], 5.0);
+
+        check_winding(&circle.boundary()?)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn polygon_edges() -> Result<()> {
+        let a = poly!(
+            [0.0, 0.0],
+            [0.0, 1.0],
+            [1.0, 1.0],
+            [1.0, 0.0],
+        );
+
+        assert!(get_boundary_edges(&a.boundary)?.count() == 4);
+        assert!(get_boundary_edge_pairs(&a.boundary)?.count() == 4);
+
+        Ok(())
+    }
 
     #[test]
     fn line_points() -> Result<()> {
@@ -386,8 +497,8 @@ mod tests {
 
         line.set_resolution(Some(5.0))?;
 
-        let contour: Contour = line.as_contour()?;
-        let points: Vec<_> = contour.points()?.collect();
+        let contour: Contour = Contour::new(Box::new(line))?;
+        let points: Vec<_> = contour.points().collect();
 
         ensure!(points.len() == 4);
 
@@ -400,6 +511,12 @@ mod tests {
         ensure!(d1 < E, "d1 {d1} is not close to 0");
         ensure!(d2 < E, "d2 {d2} is not close to 0");
         ensure!(d3 < E, "d3 {d3} is not close to 0");
+
+        Ok(())
+    }
+
+    #[test]
+    fn line_contains() -> Result<()> {
 
         Ok(())
     }

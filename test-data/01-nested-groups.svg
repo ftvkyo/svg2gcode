@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg viewBox="0 0 100 100" version="1.1" xmlns="http://www.w3.org/2000/svg">
+<g style="stroke-width:5">
+<!-- Thick line -->
+<path d="M 20,20 L 20,80" fill="none" stroke="black"/>
+<g style="stroke-width:2">
+<!-- Thin line -->
+<path d="M 50,20 L 50,80" fill="none" stroke="black"/>
+</g>
+<!-- Thick line -->
+<path d="M 80,20 L 80,80" fill="none" stroke="black"/>
+</g>
+</svg>
