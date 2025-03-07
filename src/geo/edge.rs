@@ -1,7 +1,7 @@
 use anyhow::{ensure, Result};
 use nalgebra as na;
 
-use crate::geo::E;
+use crate::{feq, geo::E};
 
 use super::{Float, Point, Vector};
 
@@ -70,8 +70,6 @@ impl Edge {
         let other_dx = other.end.x - other.start.x;
         let other_dy = other.end.y - other.start.y;
 
-        // TODO: consider non-vertical & non-horizontal collinear cases
-
         if self_dy.abs() < E && other_dy.abs() < E {
             // Both lines are horizontal
             ensure!((self.start.y - other.start.y).abs() < E, "Got two non-collinear horizontal edges");
@@ -100,6 +98,13 @@ impl Edge {
 
         let self_m = self_dy / self_dx;
         let other_m = other_dy / other_dx;
+
+        if feq!(self_m, other_m) {
+            // The lines are parallel, compare their value at x == 0
+            let self_y = self_m * (- self.start.x) + self.start.y;
+            let other_y = other_m * (- other.start.x) + other.start.y;
+            ensure!(feq!(self_y, other_y), "Got two parallel but not collinear edges");
+        }
 
         let x = (self.start.x * self_m - other.start.x * other_m - self.start.y + other.start.y) / (self_m - other_m);
         let y = self_m * (x - self.start.x) + self.start.y;
@@ -134,6 +139,29 @@ mod tests {
         let link = e1.link(&e2)?;
 
         ensure!(link == point![0.0, 1.0]);
+
+        Ok(())
+    }
+
+    #[test]
+    fn linking_special() -> Result<()> {
+        // Two vertical unconnected edges
+        let e1 = Edge::new(point![0.0, 0.0], point![0.0, 1.0]);
+        let e2 = Edge::new(point![1.0, 0.0], point![1.0, 1.0]);
+        let link = e1.link(&e2);
+        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
+
+        // Two horizontal unconnected edges
+        let e1 = Edge::new(point![0.0, 0.0], point![1.0, 0.0]);
+        let e2 = Edge::new(point![0.0, 1.0], point![1.0, 1.0]);
+        let link = e1.link(&e2);
+        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
+
+        // Two collinear unconnected edges
+        let e1 = Edge::new(point![0.0, 0.0], point![1.0, 1.0]);
+        let e2 = Edge::new(point![0.0, 1.0], point![1.0, 2.0]);
+        let link = e1.link(&e2);
+        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
 
         Ok(())
     }
