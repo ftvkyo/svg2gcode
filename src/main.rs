@@ -16,13 +16,13 @@ pub struct Args {
     #[clap(long, default_value = "0")]
     pub offset: geo::Float,
 
-    /// How many segments to use for line caps
-    #[clap(long, default_value = "12")]
-    pub segments_caps: usize,
+    /// Resolution to use for line caps
+    #[clap(long)]
+    pub resolution_caps: Option<geo::Float>,
 
-    /// How many segments to use for circles
-    #[clap(long, default_value = "24")]
-    pub segments_circles: usize,
+    /// Resolution to use for circles
+    #[clap(long)]
+    pub resolution_circles: Option<geo::Float>,
 }
 
 
@@ -61,8 +61,8 @@ mod test_files {
             input: PathBuf::from(INDIR).join(input),
             output: PathBuf::from(OUTDIR).join(input),
             offset: 0.0,
-            segments_caps: 12,
-            segments_circles: 24,
+            resolution_caps: None,
+            resolution_circles: None,
         }
     }
 

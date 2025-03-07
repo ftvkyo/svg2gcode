@@ -4,7 +4,7 @@ use anyhow::{bail, ensure, Context, Result};
 use nalgebra::point;
 use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
 
-use crate::{geo::{contour, shape, Float}, Args};
+use crate::{geo::{contour, shape::{self, Shape}, Float}, Args};
 
 
 struct SvgContext {
@@ -75,7 +75,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
         .set("opacity", "50%");
 
     let mut lines: Vec<shape::Line> = vec![];
-    let mut contours: Vec<contour::Contour> = vec![];
+    let mut shapes: Vec<Box<dyn shape::Shape>> = vec![];
 
     let mut content = String::new();
     for event in svg::open(&args.input, &mut content)? {
@@ -128,8 +128,8 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                                 }
                             },
                             &Command::Close => {
-                                let contour = builder.into_contour()?;
-                                contours.push(contour);
+                                let polygon = builder.into_convex_polygon()?;
+                                shapes.push(Box::new(polygon));
 
                                 break 'out;
                             },
@@ -160,7 +160,9 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                contours.push(shape::Circle::new(point![cx, cy], r).into_contour(args.segments_circles)?);
+                let mut circle = shape::Circle::new(point![cx, cy], r);
+                circle.set_resolution(args.resolution_circles)?;
+                shapes.push(Box::new(circle));
 
                 // Save the original shape too
 
@@ -177,12 +179,17 @@ pub fn process(args: &Args) -> Result<svg::Document> {
         }
     }
 
-    for line in lines {
-        contours.push(line.into_contour(args.segments_caps)?);
+    for mut line in lines {
+        line.set_resolution(args.resolution_caps)?;
+        shapes.push(Box::new(line));
     }
 
-    for contour in &mut contours {
-        contour.grow(args.offset)?;
+    // TODO: perform shape merging here
+
+    let mut contours = Vec::with_capacity(shapes.len());
+    for mut shape in shapes {
+        shape.grow(args.offset)?;
+        contours.push(shape.as_contour()?);
     }
 
     make_svg(contours, g_originals)

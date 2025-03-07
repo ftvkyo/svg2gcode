@@ -1,9 +1,16 @@
-use anyhow::{ensure, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use nalgebra as na;
 
 use crate::{feq, geo::{contour::Contour, edge::Edge}, p2eq};
 
-use super::{Float, Point, PI, TAU};
+use super::{edge::Turning, Float, Point, PI, TAU};
+
+
+pub trait Shape {
+    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()>;
+    fn grow(&mut self, offset: Float) -> Result<()>;
+    fn as_contour(&self) -> Result<Contour>;
+}
 
 
 pub struct PathBuilder {
@@ -39,18 +46,12 @@ impl PathBuilder {
         Ok(self)
     }
 
-    pub fn into_contour(self) -> Result<Contour> {
-        ensure!(self.points.len() >= 3, "Can only close an area with at least 3 points");
-        Contour::new(self.points)
+    pub fn into_convex_polygon(self) -> Result<ConvexPolygon> {
+        ConvexPolygon::new(self.points)
     }
 
     pub fn into_line(self, thickness: Float) -> Result<Line> {
-        ensure!(self.points.len() >= 2, "A line should have at least 2 points");
-        ensure!(thickness > 0.0, "Thickness must be greater than 0");
-        Ok(Line {
-            points: self.points,
-            thickness,
-        })
+        Line::new(self.points, thickness)
     }
 }
 
@@ -58,9 +59,20 @@ impl PathBuilder {
 pub struct Line {
     points: Vec<Point>,
     thickness: Float,
+    resolution: Option<Float>,
 }
 
 impl Line {
+    pub fn new(points: Vec<Point>, thickness: Float) -> Result<Self> {
+        ensure!(points.len() >= 2, "A line should have at least 2 points");
+        ensure!(thickness > 0.0, "Thickness must be greater than 0");
+        Ok(Self {
+            points,
+            thickness,
+            resolution: None,
+        })
+    }
+
     pub fn point_first(&self) -> &Point {
         assert!(self.points.len() >= 2);
         &self.points[0]
@@ -108,15 +120,35 @@ impl Line {
 
         Some(other)
     }
+}
 
-    pub fn into_contour(self, cap_segments: usize) -> Result<Contour> {
-        ensure!(cap_segments > 0);
-        let cap_rot = na::Rotation2::new(PI / cap_segments as f32);
+impl Shape for Line {
+    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
+        if let Some(resolution) = resolution {
+            ensure!(resolution > 0.0);
+        }
+        self.resolution = resolution;
+        Ok(())
+    }
 
+    fn grow(&mut self, offset: Float) -> Result<()> {
+        ensure!(offset >= 0.0);
+        self.thickness += offset * 2.0;
+        Ok(())
+    }
+
+    fn as_contour(&self) -> Result<Contour> {
         let Line {
             points,
             thickness,
+            resolution,
         } = self;
+
+        let resolution = resolution.unwrap_or(1.0);
+
+        let cap_circumference = PI * self.thickness / 2.0;
+        let cap_segments = (cap_circumference / resolution).ceil() as usize;
+        let cap_rot = na::Rotation2::new(PI / cap_segments as f32);
 
         let map_edge = |(p1, p2): (&Point, &Point)| Edge::new(p1.clone(), p2.clone()).translate_right(thickness / 2.0);
 
@@ -127,7 +159,7 @@ impl Line {
 
         // Find start line cap
 
-        let mut v_cap_start = edge_first.left().normalize() * thickness / 2.0;
+        let mut v_cap_start = edge_first.left().normalize() * (thickness / 2.0);
         for _ in 0..=cap_segments {
             boundary.push(points[0] + v_cap_start);
             v_cap_start = cap_rot * v_cap_start;
@@ -147,7 +179,7 @@ impl Line {
 
         // Find end line cap
 
-        let mut v_cap_end = edge_last.right().normalize() * thickness / 2.0;
+        let mut v_cap_end = edge_last.right().normalize() * (thickness / 2.0);
         for _ in 0..=cap_segments {
             boundary.push(points[points.len() - 1] + v_cap_end);
             v_cap_end = cap_rot * v_cap_end;
@@ -165,7 +197,97 @@ impl Line {
             edge_prev = edge;
         }
 
-        Contour::new(boundary)
+        Ok(Contour::from_ccwise_boundary(boundary))
+    }
+}
+
+
+pub struct ConvexPolygon {
+    /// A closed loop of points, ordered counter-clockwise
+    boundary: Vec<Point>,
+}
+
+impl ConvexPolygon {
+    pub fn new(boundary: Vec<Point>) -> Result<Self> {
+        ensure!(boundary.len() >= 3, "Need at least 3 points for a polygon");
+
+        let mut s = Self { boundary };
+
+        let mut turned_left = false;
+        let mut turned_right = false;
+
+        for (e1, e2) in s.edge_pairs()? {
+            match e1.turning(&e2.end) {
+                Turning::Left => turned_left = true,
+                Turning::Right => turned_right = true,
+                Turning::Collinear => {},
+            }
+        }
+
+        if turned_right && !turned_left {
+            eprintln!("Boundary winding is backwards. Please fix.");
+            s.boundary.reverse();
+        } else if turned_right {
+            bail!("Boundary is not convex.");
+        }
+
+        Ok(s)
+    }
+
+    pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = &Point>> {
+        Ok(self.boundary.iter())
+    }
+
+    pub fn edges(&self) -> Result<impl Iterator<Item = Edge>> {
+        let mut edge_starts = self.points()?.peekable();
+        let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
+        let edge_ends = self.points()?.skip(1).chain(p0);
+        let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::new(p1.clone(), p2.clone()));
+        Ok(edges)
+    }
+
+    pub fn edge_pairs(&self) -> Result<impl Iterator<Item = (Edge, Edge)>> {
+        let mut edges_a = self.edges()?.peekable();
+        let e0 = std::iter::once(edges_a.peek().context("No edges?")?.clone());
+        let edges_b = self.edges()?.skip(1).chain(e0);
+        let edges = edges_a.into_iter().zip(edges_b);
+        Ok(edges)
+    }
+}
+
+impl Shape for ConvexPolygon {
+    fn set_resolution(&mut self, _resolution: Option<Float>) -> Result<()> {
+        Ok(())
+    }
+
+    fn grow(&mut self, offset: Float) -> Result<()> {
+        if offset == 0.0 {
+            return Ok(());
+        }
+
+        ensure!(offset > 0.0);
+
+        // TODO: delete edges when things become self-intersecting
+        // TODO: rounded links?
+
+        let mut edges = self.edges()?.map(|e| e.translate_right(offset)).peekable();
+        let mut edge_prev = edges.peek().context("No edges?")?.clone();
+        let edges = edges.skip(1).chain(std::iter::once(edge_prev.clone()));
+
+        let mut boundary = vec![];
+
+        for edge in edges {
+            boundary.push(edge_prev.link(&edge)?);
+            edge_prev = edge;
+        }
+
+        self.boundary = boundary;
+
+        Ok(())
+    }
+
+    fn as_contour(&self) -> Result<Contour> {
+        Ok(Contour::from_ccwise_boundary(self.boundary.clone()))
     }
 }
 
@@ -173,6 +295,7 @@ impl Line {
 pub struct Circle {
     center: Point,
     radius: Float,
+    resolution: Option<Float>,
 }
 
 impl Circle {
@@ -180,25 +303,49 @@ impl Circle {
         Self {
             center,
             radius,
+            resolution: None,
         }
     }
+}
 
-    pub fn into_contour(self, segments: usize) -> Result<Contour> {
-        ensure!(segments > 0);
-        ensure!(self.radius > 0.0);
 
-        let rot = na::Matrix3::new_rotation(TAU / segments as Float);
-        let center = self.center.to_homogeneous();
+impl Shape for Circle {
+    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
+        if let Some(resolution) = resolution {
+            ensure!(resolution > 0.0);
+        }
+        self.resolution = resolution;
+        Ok(())
+    }
+
+    fn grow(&mut self, offset: Float) -> Result<()> {
+        ensure!(offset >= 0.0);
+        self.radius += offset;
+        Ok(())
+    }
+
+    fn as_contour(&self) -> Result<Contour> {
+        let Circle {
+            center,
+            radius,
+            resolution,
+        } = self;
+
+        let resolution = resolution.unwrap_or(1.0);
+
+        let circumference = TAU * radius;
+        let segments = (circumference / resolution).ceil() as usize;
+        let rot = na::Rotation2::new(TAU / segments as f32);
 
         let mut boundary = vec![];
-        let mut v = na::vector![0.0, self.radius, 1.0];
+        let mut v = na::vector![0.0, self.radius];
         for _ in 0..segments {
             let p = center + v;
             boundary.push(na::point![p.x, p.y]);
             v = rot * v;
         }
 
-        Contour::new(boundary)
+        Ok(Contour::from_ccwise_boundary(boundary))
     }
 }
 
@@ -213,12 +360,14 @@ mod tests {
 
     #[test]
     fn line_points() -> Result<()> {
-        let line = PathBuilder::new()
+        let mut line = PathBuilder::new()
             .do_moveto(point![0.0, 0.0])?
             .do_lineto(point![0.0, 1.0])?
             .into_line(1.0)?;
 
-        let contour: Contour = line.into_contour(1)?;
+        line.set_resolution(Some(5.0))?;
+
+        let contour: Contour = line.as_contour()?;
         let points: Vec<_> = contour.points()?.collect();
 
         ensure!(points.len() == 4);
