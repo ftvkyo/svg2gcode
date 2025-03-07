@@ -92,6 +92,8 @@ pub fn process(args: &Args) -> Result<svg::Document> {
 
     let mut g_originals = Group::new()
         .set("opacity", "50%");
+
+    let mut lines: Vec<shape::Line> = vec![];
     let mut contours: Vec<contour::Contour> = vec![];
 
     let mut content = String::new();
@@ -163,7 +165,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                     }
 
                     let line = builder.into_line(ctx.get_stroke_width()?)?;
-                    contours.push(line.into_contour(args.segments_caps)?);
+                    add_line(&mut lines, line);
 
                     break 'out;
                 }
@@ -200,11 +202,32 @@ pub fn process(args: &Args) -> Result<svg::Document> {
         }
     }
 
+    for line in lines {
+        contours.push(line.into_contour(args.segments_caps)?);
+    }
+
     for contour in &mut contours {
         contour.grow(args.offset)?;
     }
 
     make_svg(ctx.get_view_box()?, contours, g_originals)
+}
+
+
+fn add_line(lines: &mut Vec<shape::Line>, mut new_line: shape::Line) {
+    // Mwahaha x2
+    'merged: loop {
+        for line in &mut *lines {
+            if let Some(unmerged) = line.try_merge(new_line) {
+                new_line = unmerged;
+            } else {
+                break 'merged;
+            }
+        }
+
+        lines.push(new_line);
+        break 'merged;
+    }
 }
 
 

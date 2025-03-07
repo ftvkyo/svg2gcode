@@ -1,7 +1,7 @@
 use anyhow::{ensure, Context, Result};
 use nalgebra as na;
 
-use crate::geo::{contour::Contour, edge::Edge};
+use crate::{feq, geo::{contour::Contour, edge::Edge}, p2eq};
 
 use super::{Float, Point, PI, TAU};
 
@@ -61,6 +61,54 @@ pub struct Line {
 }
 
 impl Line {
+    pub fn point_first(&self) -> &Point {
+        assert!(self.points.len() >= 2);
+        &self.points[0]
+    }
+
+    pub fn point_last(&self) -> &Point {
+        assert!(self.points.len() >= 2);
+        &self.points[self.points.len() - 1]
+    }
+
+    /// Try to connect `other` to `self`.
+    /// Return `other` if could not connect.
+    pub fn try_merge(&mut self, other: Self) -> Option<Self> {
+        if !feq!(self.thickness, other.thickness) {
+            // Can only join lines if they have the same thickness
+            return Some(other);
+        }
+
+        let s_first = self.point_first();
+        let s_last = self.point_last();
+        let o_first = other.point_first();
+        let o_last = other.point_last();
+
+        if p2eq!(s_first, o_first) {
+            self.points.reverse();
+            self.points.extend(other.points.into_iter().skip(1));
+            return None;
+        }
+
+        if p2eq!(s_first, o_last) {
+            self.points.reverse();
+            self.points.extend(other.points.into_iter().rev().skip(1));
+            return None;
+        }
+
+        if p2eq!(s_last, o_first) {
+            self.points.extend(other.points.into_iter().skip(1));
+            return None;
+        }
+
+        if p2eq!(s_last, o_last) {
+            self.points.extend(other.points.into_iter().rev().skip(1));
+            return None;
+        }
+
+        Some(other)
+    }
+
     pub fn into_contour(self, cap_segments: usize) -> Result<Contour> {
         ensure!(cap_segments > 0);
         let cap_rot = na::Rotation2::new(PI / cap_segments as f32);

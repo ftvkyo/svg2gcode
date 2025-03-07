@@ -93,6 +93,14 @@ mod test_files {
     }
 
     #[test]
+    fn separate_lines_with_offset() -> Result<()> {
+        let mut args = make_args("separate-lines.svg");
+        args.output.set_file_name("separate-lines-with-offset.svg");
+        args.offset = 1.5;
+        run(args)
+    }
+
+    #[test]
     fn unclosed() -> Result<()> {
         let args = make_args("unclosed.svg");
         run(args)
