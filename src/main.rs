@@ -36,6 +36,16 @@ fn main() {
 
 
 fn run(args: Args) -> Result<()> {
+    ensure!(args.offset >= 0.0);
+
+    if let Some(resolution) = args.resolution_lines {
+        ensure!(resolution > 0.0);
+    }
+
+    if let Some(resolution) = args.resolution_circles {
+        ensure!(resolution > 0.0);
+    }
+
     let outdir = args.output.parent();
     if let Some(outdir) = outdir {
         if !outdir.exists() {

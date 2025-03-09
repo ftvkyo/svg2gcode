@@ -1,4 +1,4 @@
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{bail, ensure, Result};
 use log::info;
 use nalgebra as na;
 
@@ -8,10 +8,10 @@ use super::{edge::Turning, Float, Point, PI, TAU};
 
 
 pub trait Shape {
-    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()>;
-    fn grow(&mut self, offset: Float) -> Result<()>;
-    fn boundary(&self) -> Result<Vec<Point>>;
-    fn contains(&self, p: &Point) -> Result<bool>;
+    fn set_resolution(&mut self, resolution: Option<Float>);
+    fn grow(&mut self, offset: Float);
+    fn boundary(&self) -> Vec<Point>;
+    fn contains(&self, p: &Point) -> bool;
 }
 
 
@@ -109,10 +109,11 @@ impl Line {
         &self.points[self.points.len() - 1]
     }
 
-    pub fn segments(&self) -> Result<impl Iterator<Item = Edge>> {
+    pub fn segments(&self) -> impl Iterator<Item = Edge> {
+        assert!(self.points.len() >= 2);
         let edge_starts = self.points.iter();
         let edge_ends = self.points[1..].iter();
-        Ok(edge_starts.zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2))))
+        edge_starts.zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2)))
     }
 
     /// Try to connect `other` to `self`.
@@ -155,21 +156,15 @@ impl Line {
 }
 
 impl Shape for Line {
-    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
-        if let Some(resolution) = resolution {
-            ensure!(resolution > 0.0);
-        }
+    fn set_resolution(&mut self, resolution: Option<Float>) {
         self.resolution = resolution;
-        Ok(())
     }
 
-    fn grow(&mut self, offset: Float) -> Result<()> {
-        ensure!(offset >= 0.0);
+    fn grow(&mut self, offset: Float) {
         self.thickness += offset * 2.0;
-        Ok(())
     }
 
-    fn boundary(&self) -> Result<Vec<Point>> {
+    fn boundary(&self) -> Vec<Point> {
         let Line {
             points,
             thickness,
@@ -204,12 +199,12 @@ impl Shape for Line {
             .zip(points.iter().skip(1))
             .map(map_edge);
 
-        let mut edge_prev = edges_r.next().context("Expected at least one segment")?;
+        let mut edge_prev = edges_r.next().expect("At least one segment");
         for edge in edges_r {
             if edge_prev.crosses(&edge) {
-                boundary.push(edge_prev.find_intersection(&edge)?);
+                boundary.push(edge_prev.find_intersection(&edge));
             } else {
-                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution))
             }
 
             edge_prev = edge;
@@ -229,28 +224,28 @@ impl Shape for Line {
             .zip(points.iter().rev().skip(1))
             .map(map_edge);
 
-        let mut edge_prev = edges_l.next().context("Expected at least one segment")?;
+        let mut edge_prev = edges_l.next().expect("At least one segment");
         for edge in edges_l {
             if edge_prev.crosses(&edge) {
-                boundary.push(edge_prev.find_intersection(&edge)?);
+                boundary.push(edge_prev.find_intersection(&edge));
             } else {
-                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution)?)
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution))
             }
 
             edge_prev = edge;
         }
 
-        Ok(boundary)
+        boundary
     }
 
-    fn contains(&self, p: &Point) -> Result<bool> {
-        for seg in self.segments()? {
+    fn contains(&self, p: &Point) -> bool {
+        for seg in self.segments() {
             if seg.distance(p) <= self.thickness / 2.0 {
-                return Ok(true)
+                return true;
             }
         }
 
-        Ok(false)
+        false
     }
 }
 
@@ -273,7 +268,7 @@ impl ConvexPolygon {
         let mut turned_left = false;
         let mut turned_right = false;
 
-        for (e1, e2) in get_boundary_edge_pairs(&s.boundary)? {
+        for (e1, e2) in get_boundary_edge_pairs(&s.boundary) {
             match e1.turning(e2.end()) {
                 Turning::Left => turned_left = true,
                 Turning::Right => turned_right = true,
@@ -297,47 +292,39 @@ impl ConvexPolygon {
 }
 
 impl Shape for ConvexPolygon {
-    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
-        if let Some(resolution) = resolution {
-            ensure!(resolution > 0.0);
-        }
+    fn set_resolution(&mut self, resolution: Option<Float>) {
         self.resolution = resolution;
-        Ok(())
     }
 
-    fn grow(&mut self, offset: Float) -> Result<()> {
+    fn grow(&mut self, offset: Float) {
         if offset == 0.0 {
-            return Ok(());
+            return;
         }
-
-        ensure!(offset > 0.0);
 
         let resolution = self.resolution.unwrap_or(1.0);
 
         // TODO: delete edges when things become self-intersecting
 
-        let mut edges = get_boundary_edges(&self.boundary)?.map(|e| e.translate_right(offset)).peekable();
-        let mut edge_prev = edges.peek().context("No edges?")?.clone();
+        let mut edges = get_boundary_edges(&self.boundary).map(|e| e.translate_right(offset)).peekable();
+        let mut edge_prev = edges.peek().expect("Edges").clone();
         let edges = edges.skip(1).chain(std::iter::once(edge_prev.clone()));
 
         let mut boundary = vec![];
 
         for edge in edges {
-            boundary.extend(edge_prev.find_arc(&edge, offset, resolution)?);
+            boundary.extend(edge_prev.find_arc(&edge, offset, resolution));
             edge_prev = edge;
         }
 
         self.boundary = boundary;
-
-        Ok(())
     }
 
-    fn boundary(&self) -> Result<Vec<Point>> {
-        Ok(self.boundary.clone())
+    fn boundary(&self) -> Vec<Point> {
+        self.boundary.clone()
     }
 
-    fn contains(&self, p: &Point) -> Result<bool> {
-        Ok(get_boundary_edges(&self.boundary)?.all(|e| e.turning(p) != Turning::Right))
+    fn contains(&self, p: &Point) -> bool {
+        get_boundary_edges(&self.boundary).all(|e| e.turning(p) != Turning::Right)
     }
 }
 
@@ -360,21 +347,15 @@ impl Circle {
 
 
 impl Shape for Circle {
-    fn set_resolution(&mut self, resolution: Option<Float>) -> Result<()> {
-        if let Some(resolution) = resolution {
-            ensure!(resolution > 0.0);
-        }
+    fn set_resolution(&mut self, resolution: Option<Float>) {
         self.resolution = resolution;
-        Ok(())
     }
 
-    fn grow(&mut self, offset: Float) -> Result<()> {
-        ensure!(offset >= 0.0);
+    fn grow(&mut self, offset: Float) {
         self.radius += offset;
-        Ok(())
     }
 
-    fn boundary(&self) -> Result<Vec<Point>> {
+    fn boundary(&self) -> Vec<Point> {
         let Circle {
             center,
             radius,
@@ -395,29 +376,29 @@ impl Shape for Circle {
             v = rot * v;
         }
 
-        Ok(boundary)
+        boundary
     }
 
-    fn contains(&self, p: &Point) -> Result<bool> {
-        Ok((self.center - p).magnitude() <= self.radius)
+    fn contains(&self, p: &Point) -> bool {
+        (self.center - p).magnitude() <= self.radius
     }
 }
 
 
-pub fn get_boundary_edges(boundary: &Vec<Point>) -> Result<impl Iterator<Item = Edge>> {
+pub fn get_boundary_edges(boundary: &Vec<Point>) -> impl Iterator<Item = Edge> {
     let mut edge_starts = boundary.iter().peekable();
-    let p0 = std::iter::once(*edge_starts.peek().context("No points?")?);
+    let p0 = std::iter::once(*edge_starts.peek().expect("Points"));
     let edge_ends = boundary.iter().skip(1).chain(p0);
     let edges = edge_starts.into_iter().zip(edge_ends).map(|(p1, p2)| Edge::from((p1, p2)));
-    Ok(edges)
+    edges
 }
 
-pub fn get_boundary_edge_pairs(boundary: &Vec<Point>) -> Result<impl Iterator<Item = (Edge, Edge)>> {
-    let mut edges_a = get_boundary_edges(boundary)?.peekable();
-    let e0 = std::iter::once(edges_a.peek().context("No edges?")?.clone());
-    let edges_b = get_boundary_edges(boundary)?.skip(1).chain(e0);
+pub fn get_boundary_edge_pairs(boundary: &Vec<Point>) -> impl Iterator<Item = (Edge, Edge)> {
+    let mut edges_a = get_boundary_edges(boundary).peekable();
+    let e0 = std::iter::once(edges_a.peek().expect("Edges").clone());
+    let edges_b = get_boundary_edges(boundary).skip(1).chain(e0);
     let edges = edges_a.into_iter().zip(edges_b);
-    Ok(edges)
+    edges
 }
 
 
@@ -433,7 +414,7 @@ mod tests {
         let mut turned_left = false;
         let mut turned_right = false;
 
-        for (e1, e2) in get_boundary_edge_pairs(boundary)? {
+        for (e1, e2) in get_boundary_edge_pairs(boundary) {
             match e1.turning(e2.end()) {
                 Turning::Left => turned_left = true,
                 Turning::Right => turned_right = true,
@@ -457,9 +438,9 @@ mod tests {
             .do_lineto(point![0.0, 1.0])?
             .into_line(1.0)?;
 
-        line.set_resolution(Some(5.0))?;
+        line.set_resolution(Some(5.0));
 
-        check_winding(&line.boundary()?)?;
+        check_winding(&line.boundary())?;
 
         Ok(())
     }
@@ -468,7 +449,7 @@ mod tests {
     fn circle_winding() -> Result<()> {
         let circle = Circle::new(point![0.0, 0.0], 5.0);
 
-        check_winding(&circle.boundary()?)?;
+        check_winding(&circle.boundary())?;
 
         Ok(())
     }
@@ -482,8 +463,8 @@ mod tests {
             [1.0, 0.0],
         );
 
-        assert!(get_boundary_edges(&a.boundary)?.count() == 4);
-        assert!(get_boundary_edge_pairs(&a.boundary)?.count() == 4);
+        assert!(get_boundary_edges(&a.boundary).count() == 4);
+        assert!(get_boundary_edge_pairs(&a.boundary).count() == 4);
 
         Ok(())
     }
@@ -495,22 +476,22 @@ mod tests {
             .do_lineto(point![0.0, 1.0])?
             .into_line(1.0)?;
 
-        line.set_resolution(Some(5.0))?;
+        line.set_resolution(Some(5.0));
 
         let contour: Contour = Contour::new(Box::new(line))?;
         let points: Vec<_> = contour.points().collect();
 
-        ensure!(points.len() == 4);
+        assert!(points.len() == 4);
 
         let d3 = distance(&points[0], &point![-0.5, 0.0]);
         let d0 = distance(&points[1], &point![0.5, 0.0]);
         let d1 = distance(&points[2], &point![0.5, 1.0]);
         let d2 = distance(&points[3], &point![-0.5, 1.0]);
 
-        ensure!(d0 < E, "d0 {d0} is not close to 0");
-        ensure!(d1 < E, "d1 {d1} is not close to 0");
-        ensure!(d2 < E, "d2 {d2} is not close to 0");
-        ensure!(d3 < E, "d3 {d3} is not close to 0");
+        assert!(d0 < E, "d0 {d0} is not close to 0");
+        assert!(d1 < E, "d1 {d1} is not close to 0");
+        assert!(d2 < E, "d2 {d2} is not close to 0");
+        assert!(d3 < E, "d3 {d3} is not close to 0");
 
         Ok(())
     }

@@ -54,7 +54,7 @@ impl SvgContext {
     }
 
     pub fn group_pop(&mut self) -> Result<()> {
-        ensure!(self.stroke_width.pop().is_some());
+        assert!(self.stroke_width.pop().is_some());
         Ok(())
     }
 
@@ -168,7 +168,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                             },
                             &Close => {
                                 let mut polygon = builder.into_convex_polygon()?;
-                                polygon.set_resolution(args.resolution_lines)?;
+                                polygon.set_resolution(args.resolution_lines);
                                 shapes.push(Box::new(polygon));
 
                                 break 'out;
@@ -201,7 +201,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
                 let mut circle = shape::Circle::new(point![cx, cy], r);
-                circle.set_resolution(args.resolution_circles)?;
+                circle.set_resolution(args.resolution_circles);
                 shapes.push(Box::new(circle));
 
                 // Save the original shape too
@@ -220,14 +220,14 @@ pub fn process(args: &Args) -> Result<svg::Document> {
     }
 
     for mut line in lines {
-        line.set_resolution(args.resolution_lines)?;
+        line.set_resolution(args.resolution_lines);
         shapes.push(Box::new(line));
     }
 
     let mut repo = contour::Repository::new();
 
     for mut shape in shapes {
-        shape.grow(args.offset)?;
+        shape.grow(args.offset);
         repo.add(Contour::new(shape)?)?;
     }
 

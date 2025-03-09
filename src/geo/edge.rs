@@ -1,4 +1,3 @@
-use anyhow::{bail, ensure, Result};
 use nalgebra as na;
 
 use crate::{feq, geo::{E, PI}, p2eq};
@@ -144,7 +143,7 @@ impl Edge {
 
             // This goes through `p` and is perpendicular to `self`
             let fake_p_line = Edge::from((*p, p + self.left()));
-            let intersection = self.find_intersection(&fake_p_line).unwrap();
+            let intersection = self.find_intersection(&fake_p_line);
 
             return (intersection - p).magnitude();
         }
@@ -193,7 +192,7 @@ impl Edge {
     }
 
     /// Finds a point where lines defined by `self` and `other` intersect
-    pub fn find_intersection(&self, other: &Self) -> Result<Point> {
+    pub fn find_intersection(&self, other: &Self) -> Point {
         let self_dx = self.inner.1.x - self.inner.0.x;
         let self_dy = self.inner.1.y - self.inner.0.y;
 
@@ -208,28 +207,28 @@ impl Edge {
 
         if self_dy.abs() < E && other_dy.abs() < E {
             // Both lines are horizontal
-            ensure!((self.inner.0.y - other.inner.0.y).abs() < E, "Got two non-collinear horizontal edges");
-            return Ok(closest_center());
+            assert!((self.inner.0.y - other.inner.0.y).abs() < E, "Got two non-collinear horizontal edges");
+            return closest_center();
         }
 
         if self_dx.abs() < E && other_dx.abs() < E {
             // Both lines are vertical
-            ensure!((self.inner.0.x - other.inner.0.x).abs() < E, "Got two non-collinear vertical edges");
-            return Ok(closest_center());
+            assert!((self.inner.0.x - other.inner.0.x).abs() < E, "Got two non-collinear vertical edges");
+            return closest_center();
         }
 
         if self_dx.abs() < E {
             // only `self` is vertical
             let x = self.inner.0.x;
             let y = (x - other.inner.0.x) * other_dy / other_dx + other.inner.0.y;
-            return Ok(na::point![x, y]);
+            return na::point![x, y];
         }
 
         if other_dx.abs() < E {
             // only `other` is vertical
             let x = other.inner.0.x;
             let y = (x - self.inner.0.x) * self_dy / self_dx + self.inner.0.y;
-            return Ok(na::point![x, y]);
+            return na::point![x, y];
         }
 
         let self_m = self_dy / self_dx;
@@ -239,27 +238,27 @@ impl Edge {
             // The lines are parallel, compare their value at x == 0
             let self_y = self_m * (- self.inner.0.x) + self.inner.0.y;
             let other_y = other_m * (- other.inner.0.x) + other.inner.0.y;
-            ensure!(feq!(self_y, other_y), "Got two parallel but not collinear edges");
-            return Ok(closest_center());
+            assert!(feq!(self_y, other_y), "Got two parallel but not collinear edges");
+            return closest_center();
         }
 
         let x = (self.inner.0.x * self_m - other.inner.0.x * other_m - self.inner.0.y + other.inner.0.y) / (self_m - other_m);
         let y = self_m * (x - self.inner.0.x) + self.inner.0.y;
 
-        return Ok(na::point![x, y]);
+        return na::point![x, y];
     }
 
     /// Finds a series of points to smoothly connect the end of `self` to the start of `other`
-    pub fn find_arc(&self, other: &Self, radius: Float, resolution: Float) -> Result<Vec<Point>> {
-        ensure!(radius > 0.0);
-        ensure!(resolution > 0.0);
+    pub fn find_arc(&self, other: &Self, radius: Float, resolution: Float) -> Vec<Point> {
+        assert!(radius > 0.0);
+        assert!(resolution > 0.0);
 
         // 1. Determine whether the arc is clockwise or counterclockwise
 
         let turn_angle = self.angle(other);
         let arc_angle = match self.turning(other.start()) {
             Turning::Left => turn_angle,
-            Turning::Collinear => bail!("Tried to make a smooth link for connected edges"),
+            Turning::Collinear => panic!("Tried to make a smooth link for connected edges: {self}, {other}"),
             Turning::Right => - turn_angle,
         };
 
@@ -281,7 +280,7 @@ impl Edge {
             v_rot = arc_rot * v_rot;
         }
 
-        Ok(points)
+        points
     }
 }
 
@@ -295,25 +294,23 @@ mod tests {
     use Turning::*;
 
     #[test]
-    fn turning() -> Result<()> {
+    fn turning() {
         let v = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
 
-        ensure!(v.turning(&point![-1.0, -1.0]) == Left);
-        ensure!(v.turning(&point![-1.0, 0.0]) == Left);
-        ensure!(v.turning(&point![-1.0, 1.0]) == Left);
-        ensure!(v.turning(&point![-1.0, 2.0]) == Left);
+        assert_eq!(v.turning(&point![-1.0, -1.0]), Left);
+        assert_eq!(v.turning(&point![-1.0, 0.0]), Left);
+        assert_eq!(v.turning(&point![-1.0, 1.0]), Left);
+        assert_eq!(v.turning(&point![-1.0, 2.0]), Left);
 
-        ensure!(v.turning(&point![0.0, -1.0]) == Collinear);
-        ensure!(v.turning(&point![0.0, 0.0]) == Collinear);
-        ensure!(v.turning(&point![0.0, 1.0]) == Collinear);
-        ensure!(v.turning(&point![0.0, 2.0]) == Collinear);
+        assert_eq!(v.turning(&point![0.0, -1.0]), Collinear);
+        assert_eq!(v.turning(&point![0.0, 0.0]), Collinear);
+        assert_eq!(v.turning(&point![0.0, 1.0]), Collinear);
+        assert_eq!(v.turning(&point![0.0, 2.0]), Collinear);
 
-        ensure!(v.turning(&point![1.0, -1.0]) == Right);
-        ensure!(v.turning(&point![1.0, 0.0]) == Right);
-        ensure!(v.turning(&point![1.0, 1.0]) == Right);
-        ensure!(v.turning(&point![1.0, 2.0]) == Right);
-
-        Ok(())
+        assert_eq!(v.turning(&point![1.0, -1.0]), Right);
+        assert_eq!(v.turning(&point![1.0, 0.0]), Right);
+        assert_eq!(v.turning(&point![1.0, 1.0]), Right);
+        assert_eq!(v.turning(&point![1.0, 2.0]), Right);
     }
 
     #[test]
@@ -363,11 +360,11 @@ mod tests {
     }
 
     #[test]
-    fn intersection() -> Result<()> {
+    fn intersection() {
         {
             let e1 = edge!(0.0, 0.0, 0.0, 1.0);
             let e2 = edge!(0.0, 1.0, 1.0, 1.0);
-            assert!(p2eq!(e1.find_intersection(&e2)?, point![0.0, 1.0]));
+            assert!(p2eq!(e1.find_intersection(&e2), point![0.0, 1.0]));
         }
 
         {
@@ -375,34 +372,9 @@ mod tests {
             let e2 = edge!( 1.0,  0.0,  1.0,  1.0);
             let e3 = edge!( 1.0,  1.0,  0.0,  1.0);
 
-            assert!(p2eq!(e1.find_intersection(&e2)?, point![1.0, 1.0]));
-            assert!(p2eq!(e1.find_intersection(&e3)?, point![1.0, 1.0]));
-            assert!(p2eq!(e2.find_intersection(&e3)?, point![1.0, 1.0]));
+            assert!(p2eq!(e1.find_intersection(&e2), point![1.0, 1.0]));
+            assert!(p2eq!(e1.find_intersection(&e3), point![1.0, 1.0]));
+            assert!(p2eq!(e2.find_intersection(&e3), point![1.0, 1.0]));
         }
-
-        Ok(())
-    }
-
-    #[test]
-    fn intersection_when_non_existent() -> Result<()> {
-        // Two vertical unconnected edges
-        let e1 = Edge::from((point![0.0, 0.0], point![0.0, 1.0]));
-        let e2 = Edge::from((point![1.0, 0.0], point![1.0, 1.0]));
-        let link = e1.find_intersection(&e2);
-        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
-
-        // Two horizontal unconnected edges
-        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 0.0]));
-        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 1.0]));
-        let link = e1.find_intersection(&e2);
-        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
-
-        // Two collinear unconnected edges
-        let e1 = Edge::from((point![0.0, 0.0], point![1.0, 1.0]));
-        let e2 = Edge::from((point![0.0, 1.0], point![1.0, 2.0]));
-        let link = e1.find_intersection(&e2);
-        ensure!(link.is_err(), "{e1:?} and {e2:?} linked to {link:?}");
-
-        Ok(())
     }
 }

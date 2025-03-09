@@ -19,7 +19,7 @@ pub struct Contour {
 impl Contour {
     pub fn new(shape: Box<dyn Shape>) -> Result<Self> {
         Ok(Self {
-            boundary: shape.boundary()?,
+            boundary: shape.boundary(),
             area: vec![shape],
         })
     }
@@ -38,7 +38,7 @@ impl Contour {
 
     pub fn contains(&self, p: &Point) -> bool {
         for shape in &self.area {
-            if shape.contains(p).unwrap() {
+            if shape.contains(p) {
                 return true;
             }
         }
@@ -96,7 +96,7 @@ impl Contour {
                         assert!(!crosses || !touches, "Edges should not cross and touch at the same time");
 
                         if tseg.crosses(&oseg) || tseg.touches(&oseg) {
-                            Some(tseg.find_intersection(&oseg).unwrap())
+                            Some(tseg.find_intersection(&oseg))
                         } else {
                             None
                         }
@@ -618,8 +618,8 @@ mod tests {
         let mut l1 = l1.into_line(1.0)?;
         let mut l2 = l2.into_line(1.0)?;
 
-        l1.grow(5.0)?;
-        l2.grow(5.0)?;
+        l1.grow(5.0);
+        l2.grow(5.0);
 
         let mut l1 = Contour::new(Box::new(l1))?;
         let l2 = Contour::new(Box::new(l2))?;
