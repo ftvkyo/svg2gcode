@@ -257,10 +257,29 @@ fn fix_attributes<T: svg::Node>(mut node: T, original_attrs: svg::node::Attribut
 
 
 fn fix_stroke_width<T: svg::Node>(mut node: T, get_stroke_width: impl Fn() -> Result<Float>) -> Result<T> {
-    let none = svg::node::Value::from("none");
+    use svg::node::Value;
+
+    let none = Value::from("none");
     let attrs = node.get_attributes_mut().context("No attributes?")?;
 
-    if !attrs.contains_key("stroke-width") && attrs.get("stroke") != Some(&none) {
+    let mut stroke = attrs.get("stroke").cloned();
+
+    let style = attrs.get("style");
+    if let Some(style) = style {
+        for prop in style.split(";") {
+            if let Some((prop_key, prop_val)) = prop.split_once(":") {
+                let prop_key = prop_key.trim();
+                let prop_val = prop_val.trim();
+
+                match prop_key {
+                    "stroke" => stroke = Some(Value::from(prop_val)),
+                    _ => {},
+                }
+            }
+        }
+    }
+
+    if !attrs.contains_key("stroke-width") && stroke != Some(none) {
         attrs.insert("stroke-width".to_string(), get_stroke_width()?.into());
     }
 
