@@ -128,10 +128,10 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                                 });
 
                                 match command {
-                                    Command::Move(Absolute, ..) => builder.add_moveto(pts)?,
-                                    Command::Move(Relative, ..) => builder.add_moveby(pts)?,
-                                    Command::Line(Absolute, ..) => builder.add_lineto(pts)?,
-                                    Command::Line(Relative, ..) => builder.add_lineby(pts)?,
+                                    Move(Absolute, ..) => builder.add_moveto(pts)?,
+                                    Move(Relative, ..) => builder.add_moveby(pts)?,
+                                    Line(Absolute, ..) => builder.add_lineto(pts)?,
+                                    Line(Relative, ..) => builder.add_lineby(pts)?,
                                     _ => unreachable!(),
                                 }
                             },
@@ -148,6 +148,23 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                             },
                             &HorizontalLine(Relative, ref params) => {
                                 builder.add_lineby(params.iter().map(|x| point![*x, 0.0]))?;
+                            },
+                            &EllipticalArc(_, ref params) => {
+                                ensure!(params.len() % 7 == 0);
+                                warn!("Elliptical arc replaced with a straight line!");
+                                let pts = params.chunks(7).filter_map(|p| {
+                                    if let [_, _, _, _, _, x, y] = p {
+                                        Some(point![*x, *y])
+                                    } else {
+                                        None
+                                    }
+                                });
+
+                                match command {
+                                    EllipticalArc(Absolute, ..) => builder.add_lineto(pts)?,
+                                    EllipticalArc(Relative, ..) => builder.add_lineby(pts)?,
+                                    _ => unreachable!(),
+                                }
                             },
                             &Close => {
                                 let mut polygon = builder.into_convex_polygon()?;
