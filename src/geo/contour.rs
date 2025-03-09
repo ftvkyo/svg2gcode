@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use anyhow::Result;
-use log::{debug, info, warn};
+use log::{debug, warn};
 use svg::node::element::{Path as SvgPath, path::Data as SvgPathData};
 
 use crate::p2eq;
@@ -71,7 +71,7 @@ impl Contour {
     }
 
     pub fn merge(&mut self, other: Self) -> Result<()> {
-        info!("Starting merging");
+        debug!("Starting merging");
         debug!("Contour A:\n{}", fmt_edges(self.edges()));
         debug!("Contour B:\n{}", fmt_edges(other.edges()));
 
@@ -134,11 +134,11 @@ impl Contour {
             Ok(this_broken)
         };
 
-        info!("Breaking edges of A...");
+        debug!("Breaking edges of A...");
         let edges_self = break_edges(&self, &other)?;
         debug!("Edges A:\n{}", fmt_edges(edges_self.iter().cloned()));
 
-        info!("Breaking edges of B...");
+        debug!("Breaking edges of B...");
         let edges_other = break_edges(&other, &self)?;
         debug!("Edges B:\n{}", fmt_edges(edges_other.iter().cloned()));
 
@@ -156,7 +156,7 @@ impl Contour {
 
         /* === */
 
-        info!("Matching the edges into a boundary...");
+        debug!("Matching the edges into a boundary...");
 
         let mut edges_all: Vec<_> = edges_self.chain(edges_other).collect();
 
@@ -188,7 +188,10 @@ impl Contour {
                 boundary.push(*next_e.start());
                 (prev_e, prev_b) = edges_all.remove(next_i);
             } else {
-                warn!("  Could not find the next edge. Remaining:\n{}", fmt_edges(edges_all.iter().map(|(e, _)| e).cloned()));
+                warn!(
+                    "Could not find the next edge after {prev_e}. Remaining:\n{}",
+                    fmt_edges(edges_all.iter().map(|(e, _)| e).cloned())
+                );
                 break;
             }
         }
