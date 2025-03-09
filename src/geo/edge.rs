@@ -240,6 +240,7 @@ impl Edge {
             let self_y = self_m * (- self.inner.0.x) + self.inner.0.y;
             let other_y = other_m * (- other.inner.0.x) + other.inner.0.y;
             ensure!(feq!(self_y, other_y), "Got two parallel but not collinear edges");
+            return Ok(closest_center());
         }
 
         let x = (self.inner.0.x * self_m - other.inner.0.x * other_m - self.inner.0.y + other.inner.0.y) / (self_m - other_m);
