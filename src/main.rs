@@ -62,16 +62,14 @@ fn run(args: Args) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use log::info;
-
-    use crate::geo::debug::init_test_logger;
+    use crate::geo::{debug::init_test_logger, Float};
 
     use super::*;
 
     const INDIR: &'_ str = "test-data/";
     const OUTDIR: &'_ str = "tmp/test-output/";
 
-    fn run_file_tests(input: &str) -> Result<()> {
+    fn test_file(input: &str, offset: Option<Float>, resolution: Option<Float>) -> Result<()> {
         init_test_logger();
 
         let input = PathBuf::from(INDIR).join(input);
@@ -79,77 +77,101 @@ mod tests {
         let input_extension = input.extension().expect("input filename extension").to_str().expect("input filename UTF-8");
         let outdir = PathBuf::from(OUTDIR);
 
-        let output_default = outdir.join(format!("{input_stem}.{input_extension}"));
+        let suffix = match (offset, resolution) {
+            (None, None) => "",
+            (None, Some(_)) => "-lowres",
+            (Some(_), None) => "-offset",
+            (Some(_), Some(_)) => "-offset-lowres",
+        };
 
-        info!("Processing {output_default:?}");
+        let output = outdir.join(format!("{input_stem}{suffix}.{input_extension}"));
 
-        let res1 = run(Args {
+        run(Args {
             input: input.clone(),
-            output: output_default,
-            offset: 0.0,
-            resolution_lines: None,
-            resolution_circles: None,
-        });
-
-        let output_lowres = format!("{input_stem}-lowres.{input_extension}");
-        let output_lowres = outdir.join(output_lowres);
-
-        info!("Processing {output_lowres:?}");
-
-        let res2 = run(Args {
-            input: input.clone(),
-            output: output_lowres,
-            offset: 0.0,
-            resolution_lines: Some(5.0),
-            resolution_circles: Some(5.0),
-        });
-
-        let output_offset = format!("{input_stem}-offset.{input_extension}");
-        let output_offset = outdir.join(output_offset);
-
-        info!("Processing {output_offset:?}");
-
-        let res3 = run(Args {
-            input: input.clone(),
-            output: output_offset,
-            offset: 5.0,
-            resolution_lines: None,
-            resolution_circles: None,
-        });
-
-        let output_offset_lowres = format!("{input_stem}-offset-lowres.{input_extension}");
-        let output_offset_lowres = outdir.join(output_offset_lowres);
-
-        info!("Processing {output_offset_lowres:?}");
-
-        let res4 = run(Args {
-            input: input.clone(),
-            output: output_offset_lowres,
-            offset: 5.0,
-            resolution_lines: Some(5.0),
-            resolution_circles: Some(5.0),
-        });
-
-        res1.and(res2).and(res3).and(res4)
+            output,
+            offset: offset.unwrap_or(0.0),
+            resolution_lines: resolution,
+            resolution_circles: resolution,
+        })
     }
 
     #[test]
     fn file_00_shapes() -> Result<()> {
-        run_file_tests("00-shapes.svg")
+        test_file("00-shapes.svg", None, None)
+    }
+
+    #[test]
+    fn file_00_shapes_lowres() -> Result<()> {
+        test_file("00-shapes.svg", None, Some(5.0))
+    }
+
+    #[test]
+    fn file_00_shapes_offset() -> Result<()> {
+        test_file("00-shapes.svg", Some(5.0), None)
+    }
+
+    #[test]
+    fn file_00_shapes_offset_lowres() -> Result<()> {
+        test_file("00-shapes.svg", Some(5.0), Some(5.0))
     }
 
     #[test]
     fn file_01_nested_groups() -> Result<()> {
-        run_file_tests("01-nested-groups.svg")
+        test_file("01-nested-groups.svg", None, None)
+    }
+
+    #[test]
+    fn file_01_nested_groups_lowres() -> Result<()> {
+        test_file("01-nested-groups.svg", None, Some(5.0))
+    }
+
+    #[test]
+    fn file_01_nested_groups_offset() -> Result<()> {
+        test_file("01-nested-groups.svg", Some(5.0), None)
+    }
+
+    #[test]
+    fn file_01_nested_groups_offset_lowres() -> Result<()> {
+        test_file("01-nested-groups.svg", Some(5.0), Some(5.0))
     }
 
     #[test]
     fn file_02_line_merging() -> Result<()> {
-        run_file_tests("02-line-merging.svg")
+        test_file("02-line-merging.svg", None, None)
+    }
+
+    #[test]
+    fn file_02_line_merging_lowres() -> Result<()> {
+        test_file("02-line-merging.svg", None, Some(5.0))
+    }
+
+    #[test]
+    fn file_02_line_merging_offset() -> Result<()> {
+        test_file("02-line-merging.svg", Some(5.0), None)
+    }
+
+    #[test]
+    fn file_02_line_merging_offset_lowres() -> Result<()> {
+        test_file("02-line-merging.svg", Some(5.0), Some(5.0))
     }
 
     #[test]
     fn file_03_contour_merging() -> Result<()> {
-        run_file_tests("03-contour-merging.svg")
+        test_file("03-contour-merging.svg", None, None)
+    }
+
+    #[test]
+    fn file_03_contour_merging_lowres() -> Result<()> {
+        test_file("03-contour-merging.svg", None, Some(5.0))
+    }
+
+    #[test]
+    fn file_03_contour_merging_offset() -> Result<()> {
+        test_file("03-contour-merging.svg", Some(5.0), None)
+    }
+
+    #[test]
+    fn file_03_contour_merging_offset_lowres() -> Result<()> {
+        test_file("03-contour-merging.svg", Some(5.0), Some(5.0))
     }
 }

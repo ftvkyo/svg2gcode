@@ -29,7 +29,7 @@ impl std::fmt::Display for Edge {
 
 impl From<(Point, Point)> for Edge {
     fn from(value: (Point, Point)) -> Self {
-        assert!(!p2eq!(value.0, value.1));
+        assert!(!p2eq!(value.0, value.1), "Tried to create a 0-length edge: from {} to {}", value.0, value.1);
         Self {
             inner: (value.0, value.1),
         }
@@ -38,7 +38,7 @@ impl From<(Point, Point)> for Edge {
 
 impl<'p> From<(&'p Point, &'p Point)> for Edge {
     fn from(value: (&'p Point, &'p Point)) -> Self {
-        assert!(!p2eq!(value.0, value.1));
+        assert!(!p2eq!(value.0, value.1), "Tried to create a 0-length edge: from {} to {}", value.0, value.1);
         Self {
             inner: (*value.0, *value.1),
         }

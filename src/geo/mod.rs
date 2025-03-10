@@ -47,7 +47,7 @@ macro_rules! poly {
             .do_moveto(::nalgebra::point![$x0, $y0]).unwrap()
             .do_lineto(::nalgebra::point![$x1, $y1]).unwrap()
             $( .do_lineto(::nalgebra::point![$xN, $yN]).unwrap() )+
-            .into_convex_polygon().unwrap()
+            .into_convex_polygon(1.0).unwrap()
     }
 }
 

@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use anyhow::{bail, ensure, Context, Result};
 use log::warn;
 use nalgebra::point;
-use svg::{node::element::{path::{Command, Data, Position}, tag, Group}, parser::Event, Document};
+use svg::{node::element::{path::{Command, Data, Position}, tag, Group, Path}, parser::Event, Document};
 
-use crate::{geo::{contour::{self, Contour}, shape::{self, Shape}, Float}, Args};
+use crate::{geo::{contour::{self, Contour, Contours}, shape::{self, PathBuilder, Shape, ShapeE}, Float, Point}, Args};
 
 
 struct SvgContext {
@@ -68,6 +68,145 @@ impl SvgContext {
     }
 }
 
+struct Shapes {
+    lines: Vec<shape::Line>,
+    polygons: Vec<shape::ConvexPolygon>,
+    circles: Vec<shape::Circle>,
+
+    resolution_lines: Float,
+    resolution_polygons: Float,
+    resolution_circles: Float,
+}
+
+impl Shapes {
+    pub fn new(args: &Args) -> Self {
+        Self {
+            lines: vec![],
+            polygons: vec![],
+            circles: vec![],
+
+            resolution_lines: args.resolution_lines.unwrap_or(1.0),
+            resolution_polygons: args.resolution_lines.unwrap_or(1.0),
+            resolution_circles: args.resolution_circles.unwrap_or(1.0),
+        }
+    }
+
+    pub fn grow(&mut self, amount: Float) {
+        for line in &mut self.lines {
+            line.grow(amount);
+        }
+        for poly in &mut self.polygons {
+            poly.grow(amount);
+        }
+        for circ in &mut self.circles {
+            circ.grow(amount);
+        }
+    }
+
+    pub fn contours(self) -> impl Iterator<Item = Contour> {
+        let Self {
+            lines,
+            polygons,
+            circles,
+            ..
+        } = self;
+
+        lines.into_iter().map(|s| ShapeE::Line(s))
+            .chain(polygons.into_iter().map(|s| ShapeE::Poly(s)))
+            .chain(circles.into_iter().map(|s| ShapeE::Circ(s)))
+            .map(Contour::new)
+    }
+
+    pub fn add_from_path(&mut self, ctx: &SvgContext, path_data: Data) -> Result<()> {
+        let mut builder = PathBuilder::new();
+
+        for command in path_data.iter() {
+            use Command::*;
+            use Position::*;
+
+            match command {
+                | &Move(_, ref params)
+                | &Line(_, ref params) => {
+                    ensure!(params.len() % 2 == 0);
+                    let pts = params.chunks(2).filter_map(|p| {
+                        if let [x, y] = p {
+                            Some(point![*x, *y])
+                        } else {
+                            None
+                        }
+                    });
+
+                    match command {
+                        Move(Absolute, ..) => builder.add_moveto(pts)?,
+                        Move(Relative, ..) => builder.add_moveby(pts)?,
+                        Line(Absolute, ..) => builder.add_lineto(pts)?,
+                        Line(Relative, ..) => builder.add_lineby(pts)?,
+                        _ => unreachable!(),
+                    }
+                },
+                &VerticalLine(Absolute, ref params) => {
+                    let x = builder.get_position().x;
+                    builder.add_lineto(params.iter().map(|y| point![x, *y]))?;
+                },
+                &VerticalLine(Relative, ref params) => {
+                    builder.add_lineby(params.iter().map(|y| point![0.0, *y]))?;
+                },
+                &HorizontalLine(Absolute, ref params) => {
+                    let y = builder.get_position().y;
+                    builder.add_lineto(params.iter().map(|x| point![*x, y]))?;
+                },
+                &HorizontalLine(Relative, ref params) => {
+                    builder.add_lineby(params.iter().map(|x| point![*x, 0.0]))?;
+                },
+                &EllipticalArc(_, ref params) => {
+                    ensure!(params.len() % 7 == 0);
+                    warn!("Elliptical arc replaced with a straight line!");
+                    let pts = params.chunks(7).filter_map(|p| {
+                        if let [_, _, _, _, _, x, y] = p {
+                            Some(point![*x, *y])
+                        } else {
+                            None
+                        }
+                    });
+
+                    match command {
+                        EllipticalArc(Absolute, ..) => builder.add_lineto(pts)?,
+                        EllipticalArc(Relative, ..) => builder.add_lineby(pts)?,
+                        _ => unreachable!(),
+                    }
+                },
+                &Close => {
+                    let polygon = builder.into_convex_polygon(self.resolution_polygons)?;
+                    self.polygons.push(polygon);
+                    return Ok(());
+                },
+                command => {
+                    bail!("Unsupported path command {command:?}");
+                },
+            }
+        }
+
+        let mut line = builder.into_line(ctx.get_stroke_width()?, self.resolution_lines)?;
+
+        for existing in &mut self.lines {
+            if let Some(unmerged) = existing.try_merge(line) {
+                line = unmerged;
+            } else {
+                return Ok(());
+            }
+        }
+
+        self.lines.push(line);
+
+        Ok(())
+    }
+
+    pub fn add_circle(&mut self, center: Point, radius: Float) {
+        let circle = shape::Circle::new(center, radius, self.resolution_circles);
+        self.circles.push(circle);
+    }
+}
+
 
 pub fn process(args: &Args) -> Result<svg::Document> {
     let mut ctx = SvgContext::new();
@@ -75,8 +214,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
     let mut g_originals = Group::new()
         .set("opacity", "50%");
 
-    let mut lines: Vec<shape::Line> = vec![];
-    let mut shapes: Vec<Box<dyn shape::Shape>> = vec![];
+    let mut shapes = Shapes::new(args);
 
     let mut content = String::new();
     for event in svg::open(&args.input, &mut content)? {
@@ -105,85 +243,11 @@ pub fn process(args: &Args) -> Result<svg::Document> {
             /* Handle paths */
 
             Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
-                let data = attrs.get("d").context("No 'd' attribute on a path?")?;
+                let data = attrs.get("d")
+                    .context("No 'd' attribute on a path?")?;
+                let data = Data::parse(data)?;
 
-                let mut builder = shape::PathBuilder::new();
-
-                // Mwahahaha
-                'out: loop {
-                    for command in Data::parse(data)?.iter() {
-                        use Command::*;
-                        use Position::*;
-
-                        match command {
-                            | &Move(_, ref params)
-                            | &Line(_, ref params) => {
-                                ensure!(params.len() % 2 == 0);
-                                let pts = params.chunks(2).filter_map(|p| {
-                                    if let [x, y] = p {
-                                        Some(point![*x, *y])
-                                    } else {
-                                        None
-                                    }
-                                });
-
-                                match command {
-                                    Move(Absolute, ..) => builder.add_moveto(pts)?,
-                                    Move(Relative, ..) => builder.add_moveby(pts)?,
-                                    Line(Absolute, ..) => builder.add_lineto(pts)?,
-                                    Line(Relative, ..) => builder.add_lineby(pts)?,
-                                    _ => unreachable!(),
-                                }
-                            },
-                            &VerticalLine(Absolute, ref params) => {
-                                let x = builder.get_position().x;
-                                builder.add_lineto(params.iter().map(|y| point![x, *y]))?;
-                            },
-                            &VerticalLine(Relative, ref params) => {
-                                builder.add_lineby(params.iter().map(|y| point![0.0, *y]))?;
-                            },
-                            &HorizontalLine(Absolute, ref params) => {
-                                let y = builder.get_position().y;
-                                builder.add_lineto(params.iter().map(|x| point![*x, y]))?;
-                            },
-                            &HorizontalLine(Relative, ref params) => {
-                                builder.add_lineby(params.iter().map(|x| point![*x, 0.0]))?;
-                            },
-                            &EllipticalArc(_, ref params) => {
-                                ensure!(params.len() % 7 == 0);
-                                warn!("Elliptical arc replaced with a straight line!");
-                                let pts = params.chunks(7).filter_map(|p| {
-                                    if let [_, _, _, _, _, x, y] = p {
-                                        Some(point![*x, *y])
-                                    } else {
-                                        None
-                                    }
-                                });
-
-                                match command {
-                                    EllipticalArc(Absolute, ..) => builder.add_lineto(pts)?,
-                                    EllipticalArc(Relative, ..) => builder.add_lineby(pts)?,
-                                    _ => unreachable!(),
-                                }
-                            },
-                            &Close => {
-                                let mut polygon = builder.into_convex_polygon()?;
-                                polygon.set_resolution(args.resolution_lines);
-                                shapes.push(Box::new(polygon));
-
-                                break 'out;
-                            },
-                            command => {
-                                bail!("Unsupported path command {command:?}");
-                            },
-                        }
-                    }
-
-                    let line = builder.into_line(ctx.get_stroke_width()?)?;
-                    add_line(&mut lines, line);
-
-                    break 'out;
-                }
+                shapes.add_from_path(&ctx, data)?;
 
                 // Save the original shape too
 
@@ -200,9 +264,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
                 let cy: Float = attrs.get("cy").context("No 'cy' on circle")?.parse()?;
                 let r: Float = attrs.get("r").context("No 'r' on circle")?.parse()?;
 
-                let mut circle = shape::Circle::new(point![cx, cy], r);
-                circle.set_resolution(args.resolution_circles);
-                shapes.push(Box::new(circle));
+                shapes.add_circle(point![cx, cy], r);
 
                 // Save the original shape too
 
@@ -219,38 +281,12 @@ pub fn process(args: &Args) -> Result<svg::Document> {
         }
     }
 
-    for mut line in lines {
-        line.set_resolution(args.resolution_lines);
-        shapes.push(Box::new(line));
-    }
+    shapes.grow(args.offset);
 
-    let mut repo = contour::Repository::new();
+    let mut contours = contour::Contours::from(shapes.contours());
+    contours.merge_all();
 
-    for mut shape in shapes {
-        shape.grow(args.offset);
-        repo.add(Contour::new(shape)?)?;
-    }
-
-    repo.merge_all()?;
-
-    make_svg(repo.contours(), g_originals)
-}
-
-
-fn add_line(lines: &mut Vec<shape::Line>, mut new_line: shape::Line) {
-    // Mwahaha x2
-    'merged: loop {
-        for line in &mut *lines {
-            if let Some(unmerged) = line.try_merge(new_line) {
-                new_line = unmerged;
-            } else {
-                break 'merged;
-            }
-        }
-
-        lines.push(new_line);
-        break 'merged;
-    }
+    make_svg(contours, g_originals)
 }
 
 
@@ -342,7 +378,7 @@ fn make_gizmo(size: Float) -> Group {
 }
 
 
-fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::Document> {
+fn make_svg(contours: Contours, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
@@ -353,7 +389,7 @@ fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::
     let mut min_y: Float = 0.0;
     let mut max_y: Float = 0.0;
 
-    for contour in contours {
+    for contour in contours.contours {
         for point in contour.points() {
             min_x = min_x.min(point.x);
             max_x = max_x.max(point.x);
@@ -362,6 +398,23 @@ fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::
         }
 
         g_contours = g_contours.add(contour.svg());
+    }
+
+    let mut g_problems = Group::new()
+        .set("fill", "none")
+        .set("stroke", "red")
+        .set("stroke-width", 1);
+
+    for problem in contours.problems {
+        let start = problem.start();
+        let end = problem.end();
+        let data = Data::new()
+            .move_to((start.x, start.y))
+            .line_to((end.x, end.y));
+        let path = Path::new()
+            .set("d", data)
+            .set("vector-effect", "non-scaling-stroke");
+        g_problems = g_problems.add(path);
     }
 
     let gizmo_size: Float = 5.0;
@@ -374,6 +427,7 @@ fn make_svg(contours: Vec<contour::Contour>, g_originals: Group) -> Result<svg::
     let document = Document::new()
         .add(g_originals)
         .add(g_contours)
+        .add(g_problems)
         .add(make_gizmo(gizmo_size))
         .set("viewBox", (min_x, min_y, max_x - min_x, max_y - min_y));
 
