@@ -4,14 +4,47 @@ use nalgebra as na;
 
 use crate::{feq, geo::edge::Edge, p2eq};
 
-use super::{edge::Turning, Float, Point, PI, TAU};
+use super::{edge::Turning, Float, Point, E, PI, TAU};
 
 
 pub trait Shape {
-    fn set_resolution(&mut self, resolution: Option<Float>);
     fn grow(&mut self, offset: Float);
     fn boundary(&self) -> Vec<Point>;
     fn contains(&self, p: &Point) -> bool;
+}
+
+
+#[derive(Clone, Debug)]
+pub enum ShapeE {
+    Line(Line),
+    Poly(ConvexPolygon),
+    Circ(Circle),
+}
+
+impl Shape for ShapeE {
+    fn grow(&mut self, offset: Float) {
+        match self {
+            ShapeE::Line(s) => s.grow(offset),
+            ShapeE::Poly(s) => s.grow(offset),
+            ShapeE::Circ(s) => s.grow(offset),
+        }
+    }
+
+    fn boundary(&self) -> Vec<Point> {
+        match self {
+            ShapeE::Line(s) => s.boundary(),
+            ShapeE::Poly(s) => s.boundary(),
+            ShapeE::Circ(s) => s.boundary(),
+        }
+    }
+
+    fn contains(&self, p: &Point) -> bool {
+        match self {
+            ShapeE::Line(s) => s.contains(p),
+            ShapeE::Poly(s) => s.contains(p),
+            ShapeE::Circ(s) => s.contains(p),
+        }
+    }
 }
 
 
@@ -72,30 +105,31 @@ impl PathBuilder {
         Ok(self)
     }
 
-    pub fn into_convex_polygon(self) -> Result<ConvexPolygon> {
-        ConvexPolygon::new(self.points)
+    pub fn into_convex_polygon(self, resolution: Float) -> Result<ConvexPolygon> {
+        ConvexPolygon::new(self.points, resolution)
     }
 
-    pub fn into_line(self, thickness: Float) -> Result<Line> {
-        Line::new(self.points, thickness)
+    pub fn into_line(self, thickness: Float, resolution: Float) -> Result<Line> {
+        Line::new(self.points, thickness, resolution)
     }
 }
 
 
+#[derive(Clone, Debug)]
 pub struct Line {
     points: Vec<Point>,
     thickness: Float,
-    resolution: Option<Float>,
+    resolution: Float,
 }
 
 impl Line {
-    pub fn new(points: Vec<Point>, thickness: Float) -> Result<Self> {
+    pub fn new(points: Vec<Point>, thickness: Float, resolution: Float) -> Result<Self> {
         ensure!(points.len() >= 2, "A line should have at least 2 points");
         ensure!(thickness > 0.0, "Thickness must be greater than 0");
         Ok(Self {
             points,
             thickness,
-            resolution: None,
+            resolution,
         })
     }
 
@@ -156,10 +190,6 @@ impl Line {
 }
 
 impl Shape for Line {
-    fn set_resolution(&mut self, resolution: Option<Float>) {
-        self.resolution = resolution;
-    }
-
     fn grow(&mut self, offset: Float) {
         self.thickness += offset * 2.0;
     }
@@ -170,8 +200,6 @@ impl Shape for Line {
             thickness,
             resolution,
         } = self;
-
-        let resolution = resolution.unwrap_or(1.0);
 
         let cap_radius = self.thickness / 2.0;
         let cap_circumference = PI * cap_radius;
@@ -204,7 +232,7 @@ impl Shape for Line {
             if edge_prev.crosses(&edge) {
                 boundary.push(edge_prev.find_intersection(&edge));
             } else {
-                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution))
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, *resolution))
             }
 
             edge_prev = edge;
@@ -229,7 +257,7 @@ impl Shape for Line {
             if edge_prev.crosses(&edge) {
                 boundary.push(edge_prev.find_intersection(&edge));
             } else {
-                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, resolution))
+                boundary.extend(edge_prev.find_arc(&edge, thickness / 2.0, *resolution))
             }
 
             edge_prev = edge;
@@ -240,7 +268,8 @@ impl Shape for Line {
 
     fn contains(&self, p: &Point) -> bool {
         for seg in self.segments() {
-            if seg.distance(p) <= self.thickness / 2.0 {
+            let distance = seg.distance(p);
+            if distance < self.thickness / 2.0 + E / 10.0 {
                 return true;
             }
         }
@@ -250,25 +279,21 @@ impl Shape for Line {
 }
 
 
+#[derive(Clone, Debug)]
 pub struct ConvexPolygon {
     /// A closed loop of points, ordered counter-clockwise
     boundary: Vec<Point>,
-    resolution: Option<Float>,
+    resolution: Float,
 }
 
 impl ConvexPolygon {
-    pub fn new(boundary: Vec<Point>) -> Result<Self> {
+    pub fn new(mut boundary: Vec<Point>, resolution: Float) -> Result<Self> {
         ensure!(boundary.len() >= 3, "Need at least 3 points for a polygon");
-
-        let mut s = Self {
-            boundary,
-            resolution: None,
-        };
 
         let mut turned_left = false;
         let mut turned_right = false;
 
-        for (e1, e2) in get_boundary_edge_pairs(&s.boundary) {
+        for (e1, e2) in get_boundary_edge_pairs(&boundary) {
             match e1.turning(e2.end()) {
                 Turning::Left => turned_left = true,
                 Turning::Right => turned_right = true,
@@ -278,12 +303,15 @@ impl ConvexPolygon {
 
         if turned_right && !turned_left {
             info!("Boundary winding is backwards. Fixing.");
-            s.boundary.reverse();
+            boundary.reverse();
         } else if turned_right {
             bail!("Boundary is not convex.");
         }
 
-        Ok(s)
+        Ok(Self {
+            boundary,
+            resolution,
+        })
     }
 
     pub fn points(&self) -> Result<impl DoubleEndedIterator<Item = &Point>> {
@@ -292,16 +320,10 @@ impl ConvexPolygon {
 }
 
 impl Shape for ConvexPolygon {
-    fn set_resolution(&mut self, resolution: Option<Float>) {
-        self.resolution = resolution;
-    }
-
     fn grow(&mut self, offset: Float) {
         if offset == 0.0 {
             return;
         }
-
-        let resolution = self.resolution.unwrap_or(1.0);
 
         // TODO: delete edges when things become self-intersecting
 
@@ -312,7 +334,7 @@ impl Shape for ConvexPolygon {
         let mut boundary = vec![];
 
         for edge in edges {
-            boundary.extend(edge_prev.find_arc(&edge, offset, resolution));
+            boundary.extend(edge_prev.find_arc(&edge, offset, self.resolution));
             edge_prev = edge;
         }
 
@@ -329,28 +351,25 @@ impl Shape for ConvexPolygon {
 }
 
 
+#[derive(Clone, Debug)]
 pub struct Circle {
     center: Point,
     radius: Float,
-    resolution: Option<Float>,
+    resolution: Float,
 }
 
 impl Circle {
-    pub fn new(center: Point, radius: Float) -> Self {
+    pub fn new(center: Point, radius: Float, resolution: Float) -> Self {
         Self {
             center,
             radius,
-            resolution: None,
+            resolution,
         }
     }
 }
 
 
 impl Shape for Circle {
-    fn set_resolution(&mut self, resolution: Option<Float>) {
-        self.resolution = resolution;
-    }
-
     fn grow(&mut self, offset: Float) {
         self.radius += offset;
     }
@@ -361,8 +380,6 @@ impl Shape for Circle {
             radius,
             resolution,
         } = self;
-
-        let resolution = resolution.unwrap_or(1.0);
 
         let circumference = TAU * radius;
         let segments = (circumference / resolution).ceil() as usize;
@@ -433,12 +450,10 @@ mod tests {
 
     #[test]
     fn line_winding() -> Result<()> {
-        let mut line = PathBuilder::new()
+        let line = PathBuilder::new()
             .do_moveto(point![0.0, 0.0])?
             .do_lineto(point![0.0, 1.0])?
-            .into_line(1.0)?;
-
-        line.set_resolution(Some(5.0));
+            .into_line(1.0, 5.0)?;
 
         check_winding(&line.boundary())?;
 
@@ -447,7 +462,7 @@ mod tests {
 
     #[test]
     fn circle_winding() -> Result<()> {
-        let circle = Circle::new(point![0.0, 0.0], 5.0);
+        let circle = Circle::new(point![0.0, 0.0], 5.0, 1.0);
 
         check_winding(&circle.boundary())?;
 
@@ -471,14 +486,12 @@ mod tests {
 
     #[test]
     fn line_points() -> Result<()> {
-        let mut line = PathBuilder::new()
+        let line = PathBuilder::new()
             .do_moveto(point![0.0, 0.0])?
             .do_lineto(point![0.0, 1.0])?
-            .into_line(1.0)?;
+            .into_line(1.0, 5.0)?;
 
-        line.set_resolution(Some(5.0));
-
-        let contour: Contour = Contour::new(Box::new(line))?;
+        let contour: Contour = Contour::new(ShapeE::Line(line));
         let points: Vec<_> = contour.points().collect();
 
         assert!(points.len() == 4);
@@ -498,6 +511,34 @@ mod tests {
 
     #[test]
     fn line_contains() -> Result<()> {
+        let mut l1 = PathBuilder::new()
+            .do_moveto(point![10.0, 20.0])?
+            .do_lineto(point![10.0, 80.0])?
+            .into_line(5.0, 5.0)?;
+
+        let mut l2 = PathBuilder::new()
+            .do_moveto(point![25.0, 20.0])?
+            .do_lineto(point![30.0, 40.0])?
+            .do_lineto(point![20.0, 60.0])?
+            .do_lineto(point![25.0, 80.0])?
+            .into_line(5.0, 5.0)?;
+
+        l1.grow(5.0);
+        l2.grow(5.0);
+
+        let c1 = Contour::new(ShapeE::Line(l1));
+        let c2 = Contour::new(ShapeE::Line(l2));
+
+        assert!(c1.is_mergeable(&c2));
+
+        let p1 = point![17.5, 48.2295];
+        let p2 = point![17.5, 80.0];
+
+        assert!(c1.contains(&p1));
+        assert!(c1.contains(&p2));
+
+        assert!(c2.contains(&p1));
+        assert!(c2.contains(&p2));
 
         Ok(())
     }

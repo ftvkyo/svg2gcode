@@ -1,6 +1,6 @@
 use nalgebra as na;
 
-use crate::{feq, geo::{E, PI}, p2eq};
+use crate::{feq, geo::E, p2eq};
 
 use super::{Float, Point, Vector};
 
@@ -18,7 +18,10 @@ pub struct Edge {
 
 impl std::fmt::Display for Edge {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "edge!({:4.1}, {:4.1}, {:4.1}, {:4.1})",
+        let width = 8;
+        let precision = 4;
+
+        write!(f, "edge!({:width$.precision$}, {:width$.precision$}, {:width$.precision$}, {:width$.precision$})",
             self.inner.0.x,
             self.inner.0.y,
             self.inner.1.x,
@@ -29,7 +32,7 @@ impl std::fmt::Display for Edge {
 
 impl From<(Point, Point)> for Edge {
     fn from(value: (Point, Point)) -> Self {
-        assert!(!p2eq!(value.0, value.1));
+        assert!(!p2eq!(value.0, value.1), "Tried to create a 0-length edge: from {} to {}", value.0, value.1);
         Self {
             inner: (value.0, value.1),
         }
@@ -38,7 +41,7 @@ impl From<(Point, Point)> for Edge {
 
 impl<'p> From<(&'p Point, &'p Point)> for Edge {
     fn from(value: (&'p Point, &'p Point)) -> Self {
-        assert!(!p2eq!(value.0, value.1));
+        assert!(!p2eq!(value.0, value.1), "Tried to create a 0-length edge: from {} to {}", value.0, value.1);
         Self {
             inner: (*value.0, *value.1),
         }
@@ -117,7 +120,7 @@ impl Edge {
             return 0.0;
         }
 
-        if v.x < E {
+        if feq!(v.x, 0.0) {
             // `self` is vertical
 
             let py_between_se = self.start().y <= p.y && p.y <= self.end().y;
@@ -132,12 +135,10 @@ impl Edge {
             return p2s.min(p2e);
         }
 
-        // FIXME: use turning logic
+        let turning1 = Self::from((*self.start(), self.start() + self.left())).turning(&p);
+        let turning2 = Self::from((*self.end(), self.end() + self.left())).turning(&p);
 
-        let ahead_of_start = self.angle(&Edge::from((self.start(), p))) <= PI / 2.0;
-        let behind_end = self.reverse().angle(&Edge::from((self.end(), p))) <= PI / 2.0;
-
-        if ahead_of_start && behind_end {
+        if turning1 > Turning::Left && turning2 < Turning::Right {
             // The closest point lies on the segment.
             // Find the intersection point using line intersection logic.
 
