@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use anyhow::{ensure, Result};
 use clap::Parser;
+use process::make_svg;
 
 pub mod geo;
 pub mod process;
@@ -54,7 +55,8 @@ fn run(args: Args) -> Result<()> {
         ensure!(outdir.is_dir(), "{outdir:?} should be a directory");
     }
 
-    let document = process::process(&args)?;
+    let (contours, originals) = process::process(&args)?;
+    let document = make_svg(contours, originals)?;
     svg::save(&args.output, &document)?;
     Ok(())
 }
@@ -62,12 +64,24 @@ fn run(args: Args) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    use nalgebra::point;
+    use svg::node::element::{Circle, Group};
+
     use crate::geo::{debug::init_test_logger, Float};
 
     use super::*;
 
     const INDIR: &'_ str = "test-data/";
     const OUTDIR: &'_ str = "tmp/test-output/";
+
+    fn ensure_outdir() -> Result<()> {
+        let outdir = std::path::Path::new(OUTDIR);
+        if !outdir.exists() {
+            std::fs::create_dir_all(&outdir)?;
+        }
+        ensure!(outdir.is_dir(), "{outdir:?} should be a directory");
+        Ok(())
+    }
 
     fn test_file(input: &str, offset: Option<Float>, resolution: Option<Float>) -> Result<()> {
         init_test_logger();
@@ -98,6 +112,49 @@ mod tests {
     #[test]
     fn file_00_shapes() -> Result<()> {
         test_file("00-shapes.svg", None, None)
+    }
+
+    #[test]
+    fn file_03_contour_merging_collisions() -> Result<()> {
+        ensure_outdir()?;
+
+        let args = Args {
+            input: PathBuf::from(INDIR).join("03-contour-merging.svg"),
+            output: PathBuf::from(OUTDIR).join("03-contour-merging-collisions.svg"),
+            offset: 2.0,
+            resolution_lines: Some(2.0),
+            resolution_circles: Some(2.0),
+        };
+
+        let (contours, originals) = process::process(&args)?;
+        let mut collisions = Group::new();
+
+        for x in 0..=100 {
+            'out: for y in 0..=100 {
+                let circle = Circle::new()
+                    .set("cx", x)
+                    .set("cy", y)
+                    .set("r", 0.25);
+
+                for contour in &contours.contours {
+                    if contour.contains(&point![x as Float, y as Float]) {
+                        collisions = collisions
+                            .add(circle.set("fill", "blue"));
+                        continue 'out;
+                    }
+                }
+
+                collisions = collisions
+                    .add(circle.set("fill", "green"));
+            }
+        }
+
+        let document = make_svg(contours, originals)?;
+        let document = document.add(collisions);
+
+        svg::save(&args.output, &document)?;
+
+        Ok(())
     }
 
     #[test]

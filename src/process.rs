@@ -208,7 +208,7 @@ impl Shapes {
 }
 
 
-pub fn process(args: &Args) -> Result<svg::Document> {
+pub fn process(args: &Args) -> Result<(Contours, Group)> {
     let mut ctx = SvgContext::new();
 
     let mut g_originals = Group::new()
@@ -286,7 +286,7 @@ pub fn process(args: &Args) -> Result<svg::Document> {
     let mut contours = contour::Contours::from(shapes.contours());
     contours.merge_all();
 
-    make_svg(contours, g_originals)
+    Ok((contours, g_originals))
 }
 
 
@@ -378,7 +378,7 @@ fn make_gizmo(size: Float) -> Group {
 }
 
 
-fn make_svg(contours: Contours, g_originals: Group) -> Result<svg::Document> {
+pub fn make_svg(contours: Contours, g_originals: Group) -> Result<svg::Document> {
     let mut g_contours = Group::new()
         .set("fill", "none")
         .set("stroke", "black")
