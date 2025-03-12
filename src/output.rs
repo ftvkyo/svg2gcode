@@ -11,6 +11,8 @@ fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
         data = data.line_to(p.x_y());
     }
 
+    data = data.close();
+
     element::Path::new()
         .set("d", data)
         .set("vector-effect", "non-scaling-stroke")
@@ -40,10 +42,10 @@ pub fn make_svg(polygons: Vec<Polygon>) -> Document {
             max_y = max_y.max(y);
         }
 
-        g_contours = g_contours.add(make_path(exterior.points()));
+        g_contours = g_contours.add(make_path(exterior.points().skip(1)));
 
         for interior in polygon.interiors() {
-            g_contours = g_contours.add(make_path(interior.points()));
+            g_contours = g_contours.add(make_path(interior.points().skip(1)));
         }
     }
 
