@@ -1,8 +1,8 @@
 use std::slice::Windows;
 
-use geo::{Coord, Intersects, Line, LineString, Polygon};
+use geo::{Coord, Intersects, Line, LineString, Polygon, Vector2DOps};
 
-use super::{Shape, LineExt};
+use super::{LineExt, Shape, EPSILON};
 
 
 #[derive(Clone, Debug)]
@@ -18,6 +18,51 @@ impl ThickLineString {
         Self {
             inner: line,
             thickness,
+        }
+    }
+
+    pub fn can_join(&self, other: &Self) -> bool {
+        let a = self;
+        let b = other;
+
+        if (a.thickness - b.thickness).abs() > EPSILON {
+            return false;
+        }
+
+        let a1 = *a.inner.0.first().unwrap();
+        let a2 = *a.inner.0.last().unwrap();
+
+        let b1 = *b.inner.0.first().unwrap();
+        let b2 = *b.inner.0.last().unwrap();
+
+        return (a1 - b1).magnitude_squared() < EPSILON
+            || (a1 - b2).magnitude_squared() < EPSILON
+            || (a2 - b1).magnitude_squared() < EPSILON
+            || (a2 - b2).magnitude_squared() < EPSILON;
+    }
+
+    pub fn join(&mut self, other: Self) {
+        let a = self;
+        let b = other;
+
+        let a1 = *a.inner.0.first().unwrap();
+        let a2 = *a.inner.0.last().unwrap();
+
+        let b1 = *b.inner.0.first().unwrap();
+        let b2 = *b.inner.0.last().unwrap();
+
+        if (a1 - b1).magnitude_squared() < EPSILON {
+            a.inner.0.reverse();
+            a.inner.0.extend(b.inner.0.into_iter().skip(1));
+        } else if (a1 - b2).magnitude_squared() < EPSILON {
+            a.inner.0.reverse();
+            a.inner.0.extend(b.inner.0.into_iter().rev().skip(1));
+        } else if (a2 - b1).magnitude_squared() < EPSILON {
+            a.inner.0.extend(b.inner.0.into_iter().skip(1));
+        } else if (a2 - b2).magnitude_squared() < EPSILON {
+            a.inner.0.extend(b.inner.0.into_iter().rev().skip(1));
+        } else {
+            panic!("Tried to merge lines that are not connected");
         }
     }
 }

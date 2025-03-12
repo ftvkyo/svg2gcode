@@ -6,12 +6,12 @@ use super::{LineExt, Shape, EPSILON};
 
 
 #[derive(Clone, Debug)]
-pub struct OffsetConvexPolygon {
+pub struct ThickPolygon {
     inner: LineString,
     offset: f64,
 }
 
-impl OffsetConvexPolygon {
+impl ThickPolygon {
     pub fn new(mut boundary: LineString) -> Self {
         assert!(boundary.0.len() >= 3);
         assert!(boundary.is_closed());
@@ -26,13 +26,13 @@ impl OffsetConvexPolygon {
     }
 }
 
-impl Shape for OffsetConvexPolygon {
+impl Shape for ThickPolygon {
     fn offset(&mut self, offset: f64) {
         self.offset += offset;
     }
 }
 
-impl Into<Polygon> for OffsetConvexPolygon {
+impl Into<Polygon> for ThickPolygon {
     fn into(self) -> Polygon {
         if self.offset < EPSILON {
             return Polygon::new(self.inner, vec![]);

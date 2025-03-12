@@ -23,8 +23,6 @@ pub trait Shape: Into<Polygon> {
 
 pub trait CoordExt: Sized {
     fn rotate_ccwise(&self, angle_rad: f64) -> Self;
-    fn rotate_ccwise_90(&self) -> Self;
-    fn rotate_ccwise_270(&self) -> Self;
 
     /// Find the smaller of two angles
     fn find_angle(&self, other: &Self) -> f64;
@@ -39,20 +37,6 @@ impl CoordExt for Coord {
         Self {
             x: cos * self.x - sin * self.y,
             y: sin * self.x + cos * self.y,
-        }
-    }
-
-    fn rotate_ccwise_90(&self) -> Self {
-        Self {
-            x: - self.y,
-            y: self.x,
-        }
-    }
-
-    fn rotate_ccwise_270(&self) -> Self {
-        Self {
-            x: self.y,
-            y: - self.x,
         }
     }
 

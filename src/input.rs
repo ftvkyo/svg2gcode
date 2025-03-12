@@ -5,7 +5,7 @@ use geo::{Coord, LineString, Polygon};
 use log::warn;
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
-use crate::shape::{Circle, OffsetConvexPolygon, Shape, ThickLineString};
+use crate::shape::{Circle, ThickPolygon, Shape, ThickLineString};
 
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
@@ -108,10 +108,10 @@ impl PathBuilder {
         Ok(self)
     }
 
-    pub fn close(mut self) -> Result<OffsetConvexPolygon> {
+    pub fn close(mut self) -> Result<ThickPolygon> {
         ensure!(self.inner.0.len() >= 3, "Can only close a path with at least 3 points");
         self.inner.close();
-        Ok(OffsetConvexPolygon::new(self.inner))
+        Ok(ThickPolygon::new(self.inner))
     }
 
     pub fn enthicken(self, thickness: f64) -> Result<ThickLineString> {
@@ -125,7 +125,7 @@ impl PathBuilder {
 #[derive(Debug)]
 pub struct Primitives {
     pub lines: Vec<ThickLineString>,
-    pub polygons: Vec<OffsetConvexPolygon>,
+    pub polygons: Vec<ThickPolygon>,
     pub circles: Vec<Circle>,
 }
 
@@ -136,6 +136,17 @@ impl Primitives {
             polygons: vec![],
             circles: vec![],
         }
+    }
+
+    fn add_line(&mut self, line_new: ThickLineString) {
+        for line in &mut self.lines {
+            if line.can_join(&line_new) {
+                line.join(line_new);
+                return;
+            }
+        }
+
+        self.lines.push(line_new);
     }
 
     pub fn add_from_path(&mut self, ctx: &SvgContext, path_data: path::Data) -> Result<()> {
@@ -209,7 +220,7 @@ impl Primitives {
         // TODO: handle stroke width set on the elements themselves
 
         let line = builder.enthicken(ctx.get_stroke_width()?)?;
-        self.lines.push(line);
+        self.add_line(line);
 
         Ok(())
     }
