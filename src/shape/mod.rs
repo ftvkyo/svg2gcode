@@ -14,6 +14,7 @@ pub use polygon::*;
 pub const EPSILON: f64 = 0.000000001;
 
 pub const ARC_RESOLUTION: f64 = 1.0;
+pub const SIMPLIFY_RESOLUTION: f64 = 0.01;
 
 
 pub trait Shape: Into<Polygon> {

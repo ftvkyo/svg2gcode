@@ -1,6 +1,8 @@
 use std::slice::Windows;
 
-use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Length, Line, LineIntersection, LineString, Polygon, Vector2DOps};
+use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Length, Line, LineIntersection, LineString, Polygon, Simplify, Vector2DOps};
+
+use crate::shape::SIMPLIFY_RESOLUTION;
 
 use super::{LineExt, Shape, EPSILON};
 
@@ -12,10 +14,13 @@ pub struct ThickLineString {
 }
 
 impl ThickLineString {
-    pub fn new(line: LineString, thickness: f64) -> Self {
+    pub fn new(mut line: LineString, thickness: f64) -> Self {
         assert!(line.0.len() >= 2);
         assert!(thickness > 0.0);
         assert!(line.length::<Euclidean>() > 0.0);
+
+        line = line.simplify(&SIMPLIFY_RESOLUTION);
+
         Self {
             inner: line,
             thickness,
@@ -65,6 +70,8 @@ impl ThickLineString {
         } else {
             panic!("Tried to merge lines that are not connected");
         }
+
+        a.inner = a.inner.simplify(&SIMPLIFY_RESOLUTION);
     }
 }
 
@@ -115,8 +122,6 @@ impl Into<Polygon> for ThickLineString {
         inner.0.reverse();
         add_cap(&mut boundary, &inner.0);
         add_side(&mut boundary, inner.0.windows(3));
-
-        // TODO: make sure there are no self-intersections
 
         Polygon::new(LineString::new(boundary), vec![])
     }
