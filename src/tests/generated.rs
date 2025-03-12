@@ -73,6 +73,7 @@ fn line_string_grid() -> Result<()> {
     let doc = make_test_svg(g, dim);
     run("generated-line-string-grid", &doc, None)?;
     run("generated-line-string-grid-offset", &doc, Some(2.0))?;
+    run("generated-line-string-grid-offset-collapsing", &doc, Some(4.0))?;
 
     Ok(())
 }
