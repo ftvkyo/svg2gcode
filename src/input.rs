@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
-use geo::{Coord, LineString, Polygon, RemoveRepeatedPoints};
+use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints};
+use geo_offset::Offset;
 use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
-use crate::shape::{Circle, ThickPolygon, Shape, ThickLineString};
+use crate::shape::{Circle, ThickLineString};
 
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
@@ -108,11 +109,11 @@ impl PathBuilder {
         Ok(self)
     }
 
-    pub fn close(mut self) -> Result<ThickPolygon> {
+    pub fn close(mut self) -> Result<Polygon> {
         self.inner.remove_repeated_points_mut();
         ensure!(self.inner.0.len() >= 3, "Can only close a path with at least 3 points");
         self.inner.close();
-        Ok(ThickPolygon::new(self.inner))
+        Ok(Polygon::new(self.inner, vec![]))
     }
 
     pub fn enthicken(mut self, thickness: f64) -> Result<ThickLineString> {
@@ -127,7 +128,7 @@ impl PathBuilder {
 #[derive(Debug)]
 pub struct Primitives {
     pub lines: Vec<ThickLineString>,
-    pub polygons: Vec<ThickPolygon>,
+    pub polygons: Vec<Polygon>,
     pub circles: Vec<Circle>,
 }
 
@@ -252,21 +253,7 @@ impl Primitives {
         Ok(())
     }
 
-    pub fn offset(&mut self, offset: f64) {
-        for circle in &mut self.circles {
-            circle.offset(offset);
-        }
-
-        for line in &mut self.lines {
-            line.offset(offset);
-        }
-
-        for polygon in &mut self.polygons {
-            polygon.offset(offset);
-        }
-    }
-
-    pub fn polygons(mut self) -> Vec<Polygon> {
+    pub fn polygons(mut self, offset: f64) -> MultiPolygon {
         self.join_all_lines();
 
         let mut polygons = Vec::with_capacity(
@@ -274,18 +261,23 @@ impl Primitives {
         );
 
         for circle in self.circles {
-            polygons.push(circle.into());
+            let polygon: Polygon = circle.into();
+            let polygon = polygon.offset(offset).unwrap();
+            polygons.extend(polygon.into_iter());
         }
 
         for line in self.lines {
-            polygons.push(line.into());
+            let polygon: Polygon = line.into();
+            let polygon = polygon.offset(offset).unwrap();
+            polygons.extend(polygon.into_iter());
         }
 
         for polygon in self.polygons {
-            polygons.push(polygon.into());
+            let polygon = polygon.offset(offset).unwrap();
+            polygons.extend(polygon.into_iter());
         }
 
-        polygons
+        MultiPolygon(polygons)
     }
 }
 

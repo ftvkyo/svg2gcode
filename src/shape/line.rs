@@ -4,7 +4,7 @@ use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Leng
 
 use crate::shape::SIMPLIFY_RESOLUTION;
 
-use super::{LineExt, Shape, EPSILON};
+use super::{LineExt, EPSILON};
 
 
 #[derive(Clone, Debug)]
@@ -72,12 +72,6 @@ impl ThickLineString {
         }
 
         a.inner = a.inner.simplify(&SIMPLIFY_RESOLUTION);
-    }
-}
-
-impl Shape for ThickLineString {
-    fn offset(&mut self, offset: f64) {
-        self.thickness += offset * 2.0;
     }
 }
 

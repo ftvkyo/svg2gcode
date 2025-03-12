@@ -1,25 +1,18 @@
 mod circle;
 mod line;
-mod polygon;
 
 use std::f64::consts::PI;
 
-use geo::{Coord, Line, Polygon, Vector2DOps};
+use geo::{Coord, Line, Vector2DOps};
 use log::debug;
 
 pub use circle::*;
 pub use line::*;
-pub use polygon::*;
 
 pub const EPSILON: f64 = 0.000000001;
 
 pub const ARC_RESOLUTION: f64 = 1.0;
 pub const SIMPLIFY_RESOLUTION: f64 = 0.01;
-
-
-pub trait Shape: Into<Polygon> {
-    fn offset(&mut self, offset: f64);
-}
 
 
 pub trait CoordExt: Sized {

@@ -48,7 +48,7 @@ fn run(args: Args) -> Result<()> {
     let mut content = String::new();
     let parser = svg::open(&args.input, &mut content)?;
     let shapes = process_svg(parser)?;
-    let polygons = polygons_unite(shapes.polygons());
+    let polygons = polygons_unite(shapes.polygons(0.0));
     let document = make_svg(polygons);
     svg::save(&args.output, &document)?;
 

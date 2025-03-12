@@ -2,7 +2,7 @@ use std::f64::consts::TAU;
 
 use geo::{Coord, LineString, Polygon};
 
-use super::{CoordExt, Shape, ARC_RESOLUTION};
+use super::{CoordExt, ARC_RESOLUTION};
 
 
 #[derive(Clone, Debug)]
@@ -18,12 +18,6 @@ impl Circle {
             center,
             radius,
         }
-    }
-}
-
-impl Shape for Circle {
-    fn offset(&mut self, offset: f64) {
-        self.radius += offset;
     }
 }
 
