@@ -62,9 +62,6 @@ impl CoordExt for Coord {
 pub trait LineExt: Sized {
     fn shift_right(&self, offset: f64) -> Self;
 
-    /// Find an intersection point between mathematical lines defined by `self` and `other`
-    fn find_intersection(&self, other: &Self) -> Option<Coord>;
-
     /// Find a counter-clockwise arc that will connect `self` to `other` around `axis`
     fn find_arc(&self, other: &Self, axis: Coord) -> impl Iterator<Item = Coord>;
 }
@@ -78,57 +75,6 @@ impl LineExt for Line {
             * offset;
 
         geo::Line::new(self.start + shift, self.end + shift)
-    }
-
-    fn find_intersection(&self, other: &Self) -> Option<Coord> {
-        let a = self;
-        let b = other;
-
-        let a_vertical = a.dx().abs() < EPSILON;
-        let b_vertical = b.dx().abs() < EPSILON;
-
-        let collinear = || {
-            (a.end + b.start) / 2.0
-        };
-
-        let a_at_x = |x: f64| Coord {
-            x,
-            y: (x - a.start.x) * a.slope() + a.start.y,
-        };
-
-        let b_at_x = |x: f64| Coord {
-            x,
-            y: (x - b.start.x) * b.slope() + b.start.y,
-        };
-
-        if a_vertical && b_vertical {
-            let x_equal = (a.start.x - b.start.x).abs() < EPSILON;
-            if x_equal {
-                return Some(collinear());
-            }
-            return None;
-        }
-
-        if a_vertical {
-            return Some(b_at_x(a.start.x));
-        }
-
-        if b_vertical {
-            return Some(a_at_x(b.start.x));
-        }
-
-        if (a.slope() - b.slope()).abs() < EPSILON {
-            // The lines are parallel, compare their value at x == 0
-            let a0 = a_at_x(0.0);
-            let b0 = b_at_x(0.0);
-            if (a0.y - b0.y).abs() < EPSILON {
-                return Some(collinear());
-            }
-            return None;
-        }
-
-        let x = (a.start.x * a.slope() - b.start.x * b.slope() - a.start.y + b.start.y) / (a.slope() - b.slope());
-        return Some(a_at_x(x));
     }
 
     fn find_arc(&self, other: &Self, axis: Coord) -> impl Iterator<Item = Coord> {
