@@ -25,7 +25,7 @@ pub fn make_svg(polygons: Vec<Polygon>) -> Document {
     let mut max_y: f64 = 0.0;
 
     let mut g_contours = element::Group::new()
-        .set("fill", "none")
+        .set("fill", "#4774AA22")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
