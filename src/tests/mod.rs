@@ -1,5 +1,6 @@
 mod concept;
 mod generated;
+mod stress;
 
 use std::path::Path;
 

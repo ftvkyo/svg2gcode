@@ -116,7 +116,7 @@ impl PathBuilder {
 
     pub fn enthicken(self, thickness: f64) -> Result<ThickLineString> {
         ensure!(self.inner.0.len() >= 2, "Can only enthicken a path with at least 2 points");
-        ensure!(!self.inner.is_closed(), "Didn't expect a line to be closed");
+        ensure!(!self.inner.is_closed(), "Didn't expect a line to be closed. Start: {:?}, End: {:?}", self.inner.0.first().unwrap(), self.inner.0.last().unwrap());
         Ok(ThickLineString::new(self.inner, thickness))
     }
 }
