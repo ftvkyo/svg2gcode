@@ -1,5 +1,4 @@
 use geo::{Point, Polygon};
-use log::{error, warn};
 use svg::{node::element, Document};
 
 fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
@@ -31,11 +30,6 @@ pub fn make_svg(polygons: Vec<Polygon>) -> Document {
     for polygon in polygons {
         let exterior = polygon.exterior();
 
-        if exterior.0.len() == 0 {
-            error!("Got a polygon with an empty exterior");
-            continue;
-        }
-
         for p in exterior.points() {
             let x = p.x();
             let y = p.y();
@@ -49,10 +43,6 @@ pub fn make_svg(polygons: Vec<Polygon>) -> Document {
         g_contours = g_contours.add(make_path(exterior.points()));
 
         for interior in polygon.interiors() {
-            if interior.0.len() == 0 {
-                warn!("Got a polygon with an interior that is empty");
-                continue;
-            }
             g_contours = g_contours.add(make_path(interior.points()));
         }
     }

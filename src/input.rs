@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
 use geo::{Coord, LineString, Polygon, RemoveRepeatedPoints};
-use log::warn;
+use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
 use crate::shape::{Circle, ThickPolygon, Shape, ThickLineString};
@@ -118,7 +118,7 @@ impl PathBuilder {
     pub fn enthicken(mut self, thickness: f64) -> Result<ThickLineString> {
         self.inner.remove_repeated_points_mut();
         ensure!(self.inner.0.len() >= 2, "Can only enthicken a path with at least 2 points");
-        ensure!(!self.inner.is_closed(), "Didn't expect a line to be closed. Start: {:?}, End: {:?}", self.inner.0.first().unwrap(), self.inner.0.last().unwrap());
+        ensure!(!self.inner.is_closed(), "Didn't expect a line to be closed");
         Ok(ThickLineString::new(self.inner, thickness))
     }
 }
@@ -319,11 +319,13 @@ pub fn process_svg(parser: Parser) -> Result<Primitives> {
 
             /* Handle paths */
 
-            Event::Tag(tag::Path, tag::Type::Empty, attrs) => {
-                let data = attrs.get("d").context("No 'd' attribute on a path?")?;
+            Event::Tag(tag::Path, tag::Type::Empty, ref attrs) => {
+                let data = attrs.get("d").context("No 'd' on a path")?;
                 let data = path::Data::parse(data)?;
 
-                shapes.add_from_path(&ctx, data)?;
+                if let Err(err) = shapes.add_from_path(&ctx, data) {
+                    error!("Error processing {event:?}, skipping it:\n{err}");
+                }
             },
 
             /* Handle circles */

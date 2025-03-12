@@ -1,7 +1,6 @@
 use std::slice::Windows;
 
 use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Length, Line, LineIntersection, LineString, Polygon, Vector2DOps};
-use log::{error, warn};
 
 use super::{LineExt, Shape, EPSILON};
 
@@ -88,13 +87,6 @@ impl Into<Polygon> for ThickLineString {
             let p0 = points[0];
             let p1 = points[1];
 
-            let m = (p0 - p1).magnitude_squared();
-
-            if m < EPSILON {
-                error!("Tried to add a line end cap, but the segment is zero length");
-                return;
-            }
-
             let line_first = Line::new(p0, p1).shift_right(offset);
             let line_last = Line::new(p1, p0).shift_right(offset);
 
@@ -103,14 +95,6 @@ impl Into<Polygon> for ThickLineString {
 
         let add_side = |boundary: &mut Vec<Coord>, mut w: Windows<'_, Coord>| {
             while let Some([a, b, c]) = w.next() {
-                let m1 = (*a - *b).magnitude_squared();
-                let m2 = (*b - *c).magnitude_squared();
-
-                if m1 < EPSILON || m2 < EPSILON {
-                    warn!("Zero-length segment in a line. Skipping.");
-                    continue;
-                }
-
                 let line1 = Line::new(*a, *b).shift_right(offset);
                 let line2 = Line::new(*b, *c).shift_right(offset);
 
