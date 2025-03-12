@@ -1,8 +1,22 @@
+use geo::{Point, Polygon};
 use svg::{node::element, Document};
 
-use crate::input::Primitives;
+fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
+    let p0 = points.next().unwrap();
 
-pub fn make_svg(shapes: Primitives) -> Document {
+    let mut data = element::path::Data::new();
+    data = data.move_to(p0.x_y());
+
+    for p in points {
+        data = data.line_to(p.x_y());
+    }
+
+    element::Path::new()
+        .set("d", data)
+        .set("vector-effect", "non-scaling-stroke")
+}
+
+pub fn make_svg(polygons: Vec<Polygon>) -> Document {
     let mut min_x: f64 = 0.0;
     let mut max_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -13,7 +27,7 @@ pub fn make_svg(shapes: Primitives) -> Document {
         .set("stroke", "black")
         .set("stroke-width", 1);
 
-    for polygon in shapes.polygons() {
+    for polygon in polygons {
         for p in polygon.exterior().points() {
             let x = p.x();
             let y = p.y();
@@ -24,22 +38,11 @@ pub fn make_svg(shapes: Primitives) -> Document {
             max_y = max_y.max(y);
         }
 
-        let mut points = polygon.exterior().points();
+        g_contours = g_contours.add(make_path(polygon.exterior().points()));
 
-        let p0 = points.next().unwrap();
-
-        let mut data = element::path::Data::new();
-        data = data.move_to(p0.x_y());
-
-        for p in points {
-            data = data.line_to(p.x_y());
+        for interior in polygon.interiors() {
+            g_contours = g_contours.add(make_path(interior.points()));
         }
-
-        let path = element::Path::new()
-            .set("d", data)
-            .set("vector-effect", "non-scaling-stroke");
-
-        g_contours = g_contours.add(path);
     }
 
     Document::new()

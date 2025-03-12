@@ -2,6 +2,7 @@
 pub mod input;
 pub mod output;
 pub mod shape;
+pub mod transform;
 
 #[cfg(test)]
 mod tests;
@@ -11,6 +12,7 @@ use std::path::PathBuf;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use log::error;
+use transform::polygons_unite;
 
 use crate::{input::process_svg, output::make_svg};
 
@@ -42,8 +44,8 @@ fn run(args: Args) -> Result<()> {
     let mut content = String::new();
     let parser = svg::open(&args.input, &mut content)?;
     let shapes = process_svg(parser)?;
-
-    let document = make_svg(shapes);
+    let polygons = polygons_unite(shapes.polygons());
+    let document = make_svg(polygons);
     svg::save(&args.output, &document)?;
 
     Ok(())

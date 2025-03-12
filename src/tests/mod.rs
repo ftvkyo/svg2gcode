@@ -7,7 +7,7 @@ use anyhow::{ensure, Result};
 use geo::Coord;
 use svg::node::element;
 
-use crate::{input::process_svg, output::make_svg};
+use crate::{input::process_svg, output::make_svg, transform::polygons_unite};
 
 pub const OUTDIR: &'_ str = "tmp/test-output/";
 
@@ -33,10 +33,10 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     init_logger();
     ensure_dir(&OUTDIR)?;
 
-    let input = format!("{name}-input");
+    let input = format!("input-{name}");
     let input = Path::new(OUTDIR).join(input).with_extension("svg");
 
-    let output = format!("{name}-output");
+    let output = format!("output-{name}");
     let output = Path::new(OUTDIR).join(output).with_extension("svg");
 
     svg::save(&input, doc)?;
@@ -49,7 +49,9 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
         shapes.offset(offset);
     }
 
-    let doc = make_svg(shapes);
+    let polygons = polygons_unite(shapes.polygons());
+
+    let doc = make_svg(polygons);
 
     svg::save(output, &doc)?;
 
