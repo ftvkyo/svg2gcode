@@ -24,6 +24,10 @@ pub struct Args {
 
 
 fn main() {
+    if let Err(_) = std::env::var("RUST_LOG") {
+        unsafe { std::env::set_var("RUST_LOG", "info") };
+    }
+
     env_logger::init();
     let args = Args::parse();
     if let Err(err) = run(args) {
