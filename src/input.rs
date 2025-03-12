@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
-use geo::{Coord, LineString, Polygon};
+use geo::{Coord, LineString, Polygon, RemoveRepeatedPoints};
 use log::warn;
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
@@ -109,12 +109,14 @@ impl PathBuilder {
     }
 
     pub fn close(mut self) -> Result<ThickPolygon> {
+        self.inner.remove_repeated_points_mut();
         ensure!(self.inner.0.len() >= 3, "Can only close a path with at least 3 points");
         self.inner.close();
         Ok(ThickPolygon::new(self.inner))
     }
 
-    pub fn enthicken(self, thickness: f64) -> Result<ThickLineString> {
+    pub fn enthicken(mut self, thickness: f64) -> Result<ThickLineString> {
+        self.inner.remove_repeated_points_mut();
         ensure!(self.inner.0.len() >= 2, "Can only enthicken a path with at least 2 points");
         ensure!(!self.inner.is_closed(), "Didn't expect a line to be closed. Start: {:?}, End: {:?}", self.inner.0.first().unwrap(), self.inner.0.last().unwrap());
         Ok(ThickLineString::new(self.inner, thickness))
@@ -147,6 +149,25 @@ impl Primitives {
         }
 
         self.lines.push(line_new);
+    }
+
+    fn join_all_lines(&mut self) {
+        let mut new_lines = vec![];
+
+        let find_next = |lines: &Vec<ThickLineString>, current: &ThickLineString| lines.iter()
+            .enumerate()
+            .rev()
+            .find_map(|(i, l)| if l.can_join(current) { Some(i) } else { None });
+
+        while let Some(mut line) = self.lines.pop() {
+            while let Some(i) = find_next(&self.lines, &line) {
+                line.join(self.lines.remove(i));
+            }
+
+            new_lines.push(line);
+        }
+
+        self.lines = new_lines;
     }
 
     pub fn add_from_path(&mut self, ctx: &SvgContext, path_data: path::Data) -> Result<()> {
@@ -245,7 +266,9 @@ impl Primitives {
         }
     }
 
-    pub fn polygons(self) -> Vec<Polygon> {
+    pub fn polygons(mut self) -> Vec<Polygon> {
+        self.join_all_lines();
+
         let mut polygons = Vec::with_capacity(
             self.circles.len() + self.lines.len() + self.polygons.len()
         );

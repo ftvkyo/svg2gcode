@@ -5,13 +5,13 @@ mod polygon;
 use std::f64::consts::PI;
 
 use geo::{Coord, Line, Polygon, Vector2DOps};
+use log::debug;
 
 pub use circle::*;
 pub use line::*;
-use log::debug;
 pub use polygon::*;
 
-pub const EPSILON: f64 = 0.00001;
+pub const EPSILON: f64 = 0.000000001;
 
 pub const ARC_RESOLUTION: f64 = 1.0;
 
