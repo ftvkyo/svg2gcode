@@ -271,8 +271,7 @@ dependencies = [
 [[package]]
 name = "geo-offset"
 version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d74cc1ae801176d4cfee3f4be7dd8758aa5e3c6155bf7d1fd8b5db3546eb7fe4"
+source = "git+https://github.com/ftvkyo/geo-offset?branch=arc-resolution#258333a4c31eee3b0509c0eddfa892591f130feb"
 dependencies = [
  "geo-clipper",
  "geo-types",

@@ -8,6 +8,6 @@ anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 env_logger = "0.11"
 geo = "0.29"
-geo-offset = "0.4.0"
+geo-offset = { git = "https://github.com/ftvkyo/geo-offset", branch = "arc-resolution" }
 log = "0.4"
 svg = "0.18"
