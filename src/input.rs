@@ -6,7 +6,7 @@ use geo_offset::Offset;
 use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
-use crate::shape::{Circle, ThickLineString};
+use crate::shape::{Circle, ThickLineString, ARC_RESOLUTION};
 
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
@@ -260,20 +260,22 @@ impl Primitives {
             self.circles.len() + self.lines.len() + self.polygons.len()
         );
 
+        let arc_resolution = geo_offset::ArcResolution::SegmentLength(ARC_RESOLUTION);
+
         for circle in self.circles {
             let polygon: Polygon = circle.into();
-            let polygon = polygon.offset(offset).unwrap();
+            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
             polygons.extend(polygon.into_iter());
         }
 
         for line in self.lines {
             let polygon: Polygon = line.into();
-            let polygon = polygon.offset(offset).unwrap();
+            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
             polygons.extend(polygon.into_iter());
         }
 
         for polygon in self.polygons {
-            let polygon = polygon.offset(offset).unwrap();
+            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
             polygons.extend(polygon.into_iter());
         }
 
