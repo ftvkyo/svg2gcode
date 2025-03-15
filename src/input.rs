@@ -253,6 +253,10 @@ impl Primitives {
         Ok(())
     }
 
+    pub fn holes(&self) -> Vec<Coord> {
+        self.circles.iter().map(|c| c.center()).collect()
+    }
+
     pub fn polygons(mut self, offset: f64, resolution: f64) -> MultiPolygon {
         self.join_all_lines();
 

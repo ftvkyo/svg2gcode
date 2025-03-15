@@ -19,6 +19,10 @@ impl Circle {
             radius,
         }
     }
+
+    pub fn center(&self) -> Coord {
+        self.center
+    }
 }
 
 impl IntoPolygon for Circle {

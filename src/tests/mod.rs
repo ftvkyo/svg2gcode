@@ -48,7 +48,7 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     let polygons = shapes.polygons(offset.unwrap_or(0.0), 0.1);
     let polygons = polygons_unite(polygons);
 
-    let doc = make_svg(polygons);
+    let doc = make_svg(polygons, vec![]);
 
     svg::save(output, &doc)?;
 

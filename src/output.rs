@@ -1,4 +1,4 @@
-use geo::{MultiPolygon, Point};
+use geo::{Coord, MultiPolygon, Point};
 use svg::{node::element, Document};
 
 fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
@@ -18,7 +18,7 @@ fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
         .set("vector-effect", "non-scaling-stroke")
 }
 
-pub fn make_svg(polygons: MultiPolygon) -> Document {
+pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
     let mut min_x: f64 = 0.0;
     let mut max_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -49,7 +49,19 @@ pub fn make_svg(polygons: MultiPolygon) -> Document {
         }
     }
 
+    let mut g_drilling = element::Group::new()
+        .set("fill", "#89356644")
+        .set("stroke", "none");
+
+    for hole in holes {
+        g_drilling = g_drilling.add(element::Circle::new()
+            .set("cx", hole.x)
+            .set("cy", hole.y)
+            .set("r", 0.5));
+    }
+
     Document::new()
         .add(g_contours)
+        .add(g_drilling)
         .set("viewBox", (min_x - 5.0, min_y - 5.0, max_x - min_x + 10.0, max_y - min_y + 10.0))
 }
