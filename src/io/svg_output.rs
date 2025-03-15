@@ -1,5 +1,7 @@
-use geo::{Coord, MultiPolygon, Point};
+use geo::Point;
 use svg::{node::element, Document};
+
+use super::MachiningData;
 
 fn make_svg_path(mut points: impl Iterator<Item = Point>) -> element::Path {
     let p0 = points.next().unwrap();
@@ -18,7 +20,7 @@ fn make_svg_path(mut points: impl Iterator<Item = Point>) -> element::Path {
         .set("vector-effect", "non-scaling-stroke")
 }
 
-pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
+pub fn make_svg(data: MachiningData) -> Document {
     let mut min_x: f64 = 0.0;
     let mut max_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -29,7 +31,7 @@ pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
         .set("stroke", "black")
         .set("stroke-width", 1);
 
-    for polygon in polygons {
+    for polygon in data.contours() {
         let exterior = polygon.exterior();
 
         for p in exterior.points() {
@@ -50,14 +52,14 @@ pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
     }
 
     let mut g_drilling = element::Group::new()
-        .set("fill", "#89356644")
+        .set("fill", "#89356688")
         .set("stroke", "none");
 
-    for hole in holes {
+    for hole in data.holes() {
         g_drilling = g_drilling.add(element::Circle::new()
-            .set("cx", hole.x)
-            .set("cy", hole.y)
-            .set("r", 0.5));
+            .set("cx", hole.center.x)
+            .set("cy", hole.center.y)
+            .set("r", hole.radius / 2.0));
     }
 
     Document::new()
@@ -65,4 +67,3 @@ pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
         .add(g_drilling)
         .set("viewBox", (min_x - 5.0, min_y - 5.0, max_x - min_x + 10.0, max_y - min_y + 10.0))
 }
-

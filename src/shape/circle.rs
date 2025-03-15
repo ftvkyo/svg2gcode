@@ -7,8 +7,8 @@ use super::{CoordExt, IntoPolygon};
 
 #[derive(Clone, Debug)]
 pub struct Circle {
-    center: Coord,
-    radius: f64,
+    pub center: Coord,
+    pub radius: f64,
 }
 
 impl Circle {
@@ -18,10 +18,6 @@ impl Circle {
             center,
             radius,
         }
-    }
-
-    pub fn center(&self) -> Coord {
-        self.center
     }
 }
 

@@ -8,6 +8,8 @@ use svg::{node::element::{path, tag}, parser::Event, Parser};
 
 use crate::shape::{Circle, IntoPolygon, ThickLineString};
 
+use super::{Hole, MachiningData};
+
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
 }
@@ -126,13 +128,13 @@ impl PathBuilder {
 
 
 #[derive(Debug)]
-pub struct Primitives {
+pub struct SvgPrimitives {
     pub lines: Vec<ThickLineString>,
     pub polygons: Vec<Polygon>,
     pub circles: Vec<Circle>,
 }
 
-impl Primitives {
+impl SvgPrimitives {
     pub fn new() -> Self {
         Self {
             lines: vec![],
@@ -253,49 +255,32 @@ impl Primitives {
         Ok(())
     }
 
-    pub fn holes(&self) -> Vec<Coord> {
-        self.circles.iter().map(|c| c.center()).collect()
-    }
-
-    pub fn polygons(mut self, offset: f64, resolution: f64) -> MultiPolygon {
+    pub fn into_machining_data(mut self, offset: f64, resolution: f64) -> MachiningData {
         self.join_all_lines();
 
-        let mut polygons = Vec::with_capacity(
-            self.circles.len() + self.lines.len() + self.polygons.len()
-        );
+        let holes = self.circles.iter().map(|c| Hole::new(c.center, c.radius)).collect();
 
         let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
+        let simplification = resolution / 5.0;
 
-        for circle in self.circles {
-            let polygon: Polygon = circle.into_polygon(resolution);
-            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
-            polygons.extend(polygon.into_iter());
+        let contours: Vec<_> = self.circles.into_iter().map(|c| c.into_polygon(resolution))
+            .chain(self.lines.into_iter().map(|l| l.into_polygon(resolution)))
+            .chain(self.polygons.into_iter())
+            .flat_map(|p| p.offset_with_arc_resolution(offset, arc_resolution).unwrap())
+            .map(|p| p.simplify(&simplification))
+            .collect();
+
+        MachiningData {
+            holes,
+            contours: MultiPolygon(contours),
         }
-
-        for line in self.lines {
-            let polygon: Polygon = line.into_polygon(resolution);
-            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
-            polygons.extend(polygon.into_iter());
-        }
-
-        for polygon in self.polygons {
-            let polygon = polygon.offset_with_arc_resolution(offset, arc_resolution).unwrap();
-            polygons.extend(polygon.into_iter());
-        }
-
-        let simplification = resolution / 3.0;
-        for polygon in &mut polygons {
-            *polygon = polygon.simplify(&simplification);
-        }
-
-        MultiPolygon::from(polygons)
     }
 }
 
 
-pub fn process_svg(parser: Parser) -> Result<Primitives> {
+pub fn process_svg(parser: Parser) -> Result<SvgPrimitives> {
     let mut ctx = SvgContext::new();
-    let mut shapes = Primitives::new();
+    let mut shapes = SvgPrimitives::new();
 
     for event in parser {
         match event {

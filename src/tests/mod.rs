@@ -8,7 +8,7 @@ use anyhow::{ensure, Result};
 use geo::Coord;
 use svg::node::element;
 
-use crate::{io::svg_input::process_svg, io::svg_output::make_svg, transform::polygons_unite};
+use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
 
 pub const OUTDIR: &'_ str = "tmp/test-output/";
 
@@ -44,11 +44,11 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     let mut content = String::new();
     let parser = svg::open(&input, &mut content)?;
 
-    let shapes = process_svg(parser)?;
-    let polygons = shapes.polygons(offset.unwrap_or(0.0), 0.1);
-    let polygons = polygons_unite(polygons);
+    let primitives = process_svg(parser)?;
+    let mut data = primitives.into_machining_data(offset.unwrap_or(0.0), 0.1);
+    data.unite();
 
-    let doc = make_svg(polygons, vec![]);
+    let doc = make_svg(data);
 
     svg::save(output, &doc)?;
 

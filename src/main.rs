@@ -1,6 +1,5 @@
 pub mod io;
 pub mod shape;
-pub mod transform;
 
 #[cfg(test)]
 mod tests;
@@ -10,7 +9,6 @@ use std::path::PathBuf;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use log::error;
-use transform::polygons_unite;
 
 use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
 
@@ -24,6 +22,9 @@ pub struct Args {
 
     #[clap(long, default_value = "0.1")]
     pub resolution: f64,
+
+    #[clap(long)]
+    pub simplify: Option<f64>,
 }
 
 
@@ -51,10 +52,16 @@ fn run(args: Args) -> Result<()> {
 
     let mut content = String::new();
     let parser = svg::open(&args.input, &mut content)?;
-    let shapes = process_svg(parser)?;
-    let holes = shapes.holes();
-    let polygons = polygons_unite(shapes.polygons(args.offset, args.resolution));
-    let document = make_svg(polygons, holes);
+    let primitives = process_svg(parser)?;
+
+    let mut data = primitives.into_machining_data(args.offset, args.resolution);
+    data.unite();
+
+    if let Some(simplification) = args.simplify {
+        data.simplify(simplification);
+    }
+
+    let document = make_svg(data);
     svg::save(&args.output, &document)?;
 
     Ok(())
