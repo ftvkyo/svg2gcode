@@ -11,8 +11,6 @@ pub use line::*;
 
 pub const EPSILON: f64 = 0.000000001;
 
-pub const SIMPLIFY_RESOLUTION: f64 = 0.01;
-
 
 pub trait CoordExt: Sized {
     fn rotate_ccwise(&self, angle_rad: f64) -> Self;

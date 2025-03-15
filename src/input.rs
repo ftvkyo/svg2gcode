@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
-use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints};
+use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints, Simplify};
 use geo_offset::Offset;
 use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
@@ -279,7 +279,12 @@ impl Primitives {
             polygons.extend(polygon.into_iter());
         }
 
-        MultiPolygon(polygons)
+        let simplification = resolution / 3.0;
+        for polygon in &mut polygons {
+            *polygon = polygon.simplify(&simplification);
+        }
+
+        MultiPolygon::from(polygons)
     }
 }
 

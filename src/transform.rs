@@ -1,6 +1,6 @@
-use geo::{BooleanOps, Intersects, MultiPolygon, Polygon};
+use geo::{BooleanOps, Intersects, MultiPolygon};
 
-pub fn polygons_unite(mut polygons: MultiPolygon) -> Vec<Polygon> {
+pub fn polygons_unite(mut polygons: MultiPolygon) -> MultiPolygon {
     let mut result = vec![];
 
     let find_next = |polygons: &MultiPolygon, current: &MultiPolygon| -> Option<usize> {
@@ -20,5 +20,5 @@ pub fn polygons_unite(mut polygons: MultiPolygon) -> Vec<Polygon> {
         result.extend(p_leader.into_iter());
     }
 
-    result
+    MultiPolygon::from(result)
 }

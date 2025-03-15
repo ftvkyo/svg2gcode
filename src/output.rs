@@ -1,4 +1,4 @@
-use geo::{Point, Polygon};
+use geo::{MultiPolygon, Point};
 use svg::{node::element, Document};
 
 fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
@@ -18,7 +18,7 @@ fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
         .set("vector-effect", "non-scaling-stroke")
 }
 
-pub fn make_svg(polygons: Vec<Polygon>) -> Document {
+pub fn make_svg(polygons: MultiPolygon) -> Document {
     let mut min_x: f64 = 0.0;
     let mut max_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
