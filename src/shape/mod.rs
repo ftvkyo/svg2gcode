@@ -91,11 +91,12 @@ impl LineExt for Line {
         let mut vp = va;
         let mut arc = vec![];
 
-        for _ in 0..=arc_segments {
+        for _ in 0..arc_segments {
             arc.push(axis + vp);
             vp = vp.rotate_ccwise(arc_rot);
         }
 
+        arc.push(b);
         arc.into_iter()
     }
 }

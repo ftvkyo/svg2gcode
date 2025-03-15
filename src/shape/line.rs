@@ -1,6 +1,7 @@
 use std::slice::Windows;
 
 use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Length, Line, LineIntersection, LineString, Polygon, Simplify, Vector2DOps};
+use log::debug;
 
 use crate::shape::SIMPLIFY_RESOLUTION;
 
@@ -91,6 +92,8 @@ impl Into<Polygon> for ThickLineString {
             let line_first = Line::new(p0, p1).shift_right(offset);
             let line_last = Line::new(p1, p0).shift_right(offset);
 
+            debug!("Adding cap between {line_first:?} and {line_last:?}");
+
             boundary.extend(line_last.find_arc(&line_first, p0));
         };
 
@@ -98,6 +101,8 @@ impl Into<Polygon> for ThickLineString {
             while let Some([a, b, c]) = w.next() {
                 let line1 = Line::new(*a, *b).shift_right(offset);
                 let line2 = Line::new(*b, *c).shift_right(offset);
+
+                debug!("Adding connection between {line1:?} and {line2:?}");
 
                 let int = line_intersection(line1, line2);
                 match int {
@@ -119,4 +124,41 @@ impl Into<Polygon> for ThickLineString {
 
         Polygon::new(LineString::new(boundary), vec![])
     }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use geo::line_string;
+
+    use crate::tests::init_test_logger;
+
+    use super::*;
+
+
+#[test]
+fn thick_line_vertices() {
+    init_test_logger();
+
+    let l1 = ThickLineString::new(line_string![
+        (x: 0.0, y: 0.0),
+        (x: 0.0, y: 1.0),
+    ], 0.02);
+    let p1: Polygon = l1.into();
+
+    let coords: Vec<_> = p1.exterior().coords().collect();
+
+    assert_eq!(coords.len(), 5, "Got {coords:?}");
+    assert_eq!(p1.interiors().len(), 0);
+
+    let lines: Vec<_> = p1.exterior().lines().collect();
+
+    // Two vertical lines
+    assert!(lines.contains(&Line { start: Coord { x: 0.01, y: 0.0 }, end: Coord { x: 0.01, y: 1.0 } }));
+    assert!(lines.contains(&Line { start: Coord { x: -0.01, y: 1.0 }, end: Coord { x: -0.01, y: 0.0 } }));
+
+    // Two horizontal lines that form the caps at this resolution
+    assert!(lines.contains(&Line { start: Coord { x: 0.01, y: 1.0 }, end: Coord { x: -0.01, y: 1.0 } }));
+    assert!(lines.contains(&Line { start: Coord { x: -0.01, y: 0.0 }, end: Coord { x: 0.01, y: 0.0 } }));
+}
 }

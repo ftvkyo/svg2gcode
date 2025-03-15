@@ -21,7 +21,7 @@ fn ensure_dir(dir: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
-fn init_logger() {
+pub fn init_test_logger() {
     let _ = env_logger::builder()
         .filter_level(log::LevelFilter::Debug)
         .format_timestamp(None)
@@ -31,7 +31,7 @@ fn init_logger() {
 }
 
 pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
-    init_logger();
+    init_test_logger();
     ensure_dir(&OUTDIR)?;
 
     let input = format!("input-{name}");
