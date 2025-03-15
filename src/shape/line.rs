@@ -5,7 +5,7 @@ use log::debug;
 
 use crate::shape::SIMPLIFY_RESOLUTION;
 
-use super::{LineExt, EPSILON};
+use super::{IntoPolygon, LineExt, EPSILON};
 
 
 #[derive(Clone, Debug)]
@@ -76,8 +76,8 @@ impl ThickLineString {
     }
 }
 
-impl Into<Polygon> for ThickLineString {
-    fn into(self) -> Polygon {
+impl IntoPolygon for ThickLineString {
+    fn into_polygon(self, resolution: f64) -> Polygon {
         let Self {
             mut inner,
             thickness,
@@ -94,7 +94,7 @@ impl Into<Polygon> for ThickLineString {
 
             debug!("Adding cap between {line_first:?} and {line_last:?}");
 
-            boundary.extend(line_last.find_arc(&line_first, p0));
+            boundary.extend(line_last.find_arc(&line_first, p0, resolution));
         };
 
         let add_side = |boundary: &mut Vec<Coord>, mut w: Windows<'_, Coord>| {
@@ -108,7 +108,7 @@ impl Into<Polygon> for ThickLineString {
                 match int {
                     Some(LineIntersection::SinglePoint { intersection, .. }) => boundary.push(intersection),
                     Some(LineIntersection::Collinear { intersection }) => boundary.push(intersection.centroid().0),
-                    None => boundary.extend(line1.find_arc(&line2, *b)),
+                    None => boundary.extend(line1.find_arc(&line2, *b, resolution)),
                 }
             }
         };
@@ -144,7 +144,7 @@ fn thick_line_vertices() {
         (x: 0.0, y: 0.0),
         (x: 0.0, y: 1.0),
     ], 0.02);
-    let p1: Polygon = l1.into();
+    let p1: Polygon = l1.into_polygon(0.1);
 
     let coords: Vec<_> = p1.exterior().coords().collect();
 

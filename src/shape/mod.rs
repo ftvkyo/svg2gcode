@@ -3,7 +3,7 @@ mod line;
 
 use std::f64::consts::PI;
 
-use geo::{Coord, Line, Vector2DOps};
+use geo::{Coord, Line, Polygon, Vector2DOps};
 use log::debug;
 
 pub use circle::*;
@@ -11,7 +11,6 @@ pub use line::*;
 
 pub const EPSILON: f64 = 0.000000001;
 
-pub const ARC_RESOLUTION: f64 = 0.2;
 pub const SIMPLIFY_RESOLUTION: f64 = 0.01;
 
 
@@ -57,7 +56,7 @@ pub trait LineExt: Sized {
     fn shift_right(&self, offset: f64) -> Self;
 
     /// Find a counter-clockwise arc that will connect `self` to `other` around `axis`
-    fn find_arc(&self, other: &Self, axis: Coord) -> impl Iterator<Item = Coord>;
+    fn find_arc(&self, other: &Self, axis: Coord, resolution: f64) -> impl Iterator<Item = Coord>;
 }
 
 
@@ -71,7 +70,7 @@ impl LineExt for Line {
         geo::Line::new(self.start + shift, self.end + shift)
     }
 
-    fn find_arc(&self, other: &Self, axis: Coord) -> impl Iterator<Item = Coord> {
+    fn find_arc(&self, other: &Self, axis: Coord, resolution: f64) -> impl Iterator<Item = Coord> {
         let a = self.end;
         let b = other.start;
 
@@ -83,7 +82,7 @@ impl LineExt for Line {
         let radius = (a - axis).magnitude();
         let arc_angle = self.delta().find_angle(&other.delta());
         let arc_circum = radius * arc_angle;
-        let arc_segments = (arc_circum / ARC_RESOLUTION).ceil() as usize;
+        let arc_segments = (arc_circum / resolution).ceil() as usize;
         let arc_rot = arc_angle / arc_segments as f64;
 
         debug!("Arc angle: {arc_angle}, segments: {arc_segments}, angle_per_segment: {arc_rot}");
@@ -99,6 +98,11 @@ impl LineExt for Line {
         arc.push(b);
         arc.into_iter()
     }
+}
+
+
+pub trait IntoPolygon {
+    fn into_polygon(self, resolution: f64) -> Polygon;
 }
 
 

@@ -45,7 +45,7 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     let parser = svg::open(&input, &mut content)?;
 
     let shapes = process_svg(parser)?;
-    let polygons = shapes.polygons(offset.unwrap_or(0.0));
+    let polygons = shapes.polygons(offset.unwrap_or(0.0), 0.1);
     let polygons = polygons_unite(polygons);
 
     let doc = make_svg(polygons);

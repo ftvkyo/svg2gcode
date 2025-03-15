@@ -2,7 +2,7 @@ use std::f64::consts::TAU;
 
 use geo::{Coord, LineString, Polygon};
 
-use super::{CoordExt, ARC_RESOLUTION};
+use super::{CoordExt, IntoPolygon};
 
 
 #[derive(Clone, Debug)]
@@ -21,10 +21,10 @@ impl Circle {
     }
 }
 
-impl Into<Polygon> for Circle {
-    fn into(self) -> Polygon {
+impl IntoPolygon for Circle {
+    fn into_polygon(self, resolution: f64) -> Polygon {
         let circum = TAU * self.radius;
-        let segments = (circum / ARC_RESOLUTION).ceil() as usize;
+        let segments = (circum / resolution).ceil() as usize;
         let segments = segments.max(6);
         let angle = TAU / segments as f64;
 

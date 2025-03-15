@@ -20,6 +20,12 @@ use crate::{input::process_svg, output::make_svg};
 pub struct Args {
     pub input: PathBuf,
     pub output: PathBuf,
+
+    #[clap(long, default_value = "0.0")]
+    pub offset: f64,
+
+    #[clap(long, default_value = "0.1")]
+    pub resolution: f64,
 }
 
 
@@ -48,7 +54,7 @@ fn run(args: Args) -> Result<()> {
     let mut content = String::new();
     let parser = svg::open(&args.input, &mut content)?;
     let shapes = process_svg(parser)?;
-    let polygons = polygons_unite(shapes.polygons(0.0));
+    let polygons = polygons_unite(shapes.polygons(args.offset, args.resolution));
     let document = make_svg(polygons);
     svg::save(&args.output, &document)?;
 
