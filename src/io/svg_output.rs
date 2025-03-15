@@ -1,7 +1,7 @@
 use geo::{Coord, MultiPolygon, Point};
 use svg::{node::element, Document};
 
-fn make_path(mut points: impl Iterator<Item = Point>) -> element::Path {
+fn make_svg_path(mut points: impl Iterator<Item = Point>) -> element::Path {
     let p0 = points.next().unwrap();
 
     let mut data = element::path::Data::new();
@@ -42,10 +42,10 @@ pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
             max_y = max_y.max(y);
         }
 
-        g_contours = g_contours.add(make_path(exterior.points().skip(1)));
+        g_contours = g_contours.add(make_svg_path(exterior.points().skip(1)));
 
         for interior in polygon.interiors() {
-            g_contours = g_contours.add(make_path(interior.points().skip(1)));
+            g_contours = g_contours.add(make_svg_path(interior.points().skip(1)));
         }
     }
 
@@ -65,3 +65,4 @@ pub fn make_svg(polygons: MultiPolygon, holes: Vec<Coord>) -> Document {
         .add(g_drilling)
         .set("viewBox", (min_x - 5.0, min_y - 5.0, max_x - min_x + 10.0, max_y - min_y + 10.0))
 }
+

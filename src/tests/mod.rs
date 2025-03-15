@@ -8,7 +8,7 @@ use anyhow::{ensure, Result};
 use geo::Coord;
 use svg::node::element;
 
-use crate::{input::process_svg, output::make_svg, transform::polygons_unite};
+use crate::{io::svg_input::process_svg, io::svg_output::make_svg, transform::polygons_unite};
 
 pub const OUTDIR: &'_ str = "tmp/test-output/";
 

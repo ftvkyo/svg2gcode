@@ -1,6 +1,4 @@
-
-pub mod input;
-pub mod output;
+pub mod io;
 pub mod shape;
 pub mod transform;
 
@@ -14,7 +12,7 @@ use clap::Parser;
 use log::error;
 use transform::polygons_unite;
 
-use crate::{input::process_svg, output::make_svg};
+use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
 
 #[derive(Parser)]
 pub struct Args {
