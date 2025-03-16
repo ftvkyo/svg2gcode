@@ -8,7 +8,7 @@ use anyhow::{ensure, Result};
 use geo::Coord;
 use svg::node::element;
 
-use crate::{config::SharedFabConfig, io::{svg_input::process_svg, svg_output::make_svg}};
+use crate::{config::{BitShape, JobConfig, JobKind, SharedFabConfig}, io::{svg_input::process_svg, svg_output::make_svg}};
 
 pub const OUTDIR: &'_ str = "tmp/test-output/";
 
@@ -47,12 +47,18 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     let resolution = 0.1;
 
     let primitives = process_svg(parser)?;
-    let mut data = primitives.into_fab_data(&SharedFabConfig { resolution });
-    if let Some(distance) = offset {
-        data.offset(distance, resolution);
-    }
 
-    let doc = make_svg(data);
+    let config = JobConfig {
+        kind: JobKind::EngraveContours {
+            depth: offset.unwrap_or(0.0),
+        },
+        input,
+        bit_shape: BitShape::V45Deg,
+    };
+
+    let fab = primitives.into_fab_data(&SharedFabConfig { resolution }, config)?;
+
+    let doc = make_svg(vec![fab]);
     svg::save(output, &doc)?;
 
     Ok(())

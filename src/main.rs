@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use config::FabConfig;
+use io::FabData;
 use log::error;
 
 use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
@@ -67,21 +68,20 @@ fn run(outdir: PathBuf, config: FabConfig) -> Result<()> {
 
     let name = config.name;
 
-    for (i, job) in config.jobs.into_iter().enumerate() {
+    let mut fab: Vec<FabData> = Vec::with_capacity(config.jobs.len());
+
+    for job in config.jobs {
         let mut content = String::new();
         let parser = svg::open(&job.input, &mut content)?;
         let primitives = process_svg(parser)?;
 
-        let mut data = primitives.into_fab_data(&config.shared);
-        if let Some(distance) = job.offset() {
-            data.offset(distance, config.shared.resolution);
-        }
-
-        let output_path = outdir.join(format!("{name}-{i:02}.svg"));
-
-        let document = make_svg(data);
-        svg::save(output_path, &document)?;
+        fab.push(primitives.into_fab_data(&config.shared, job)?);
     }
+
+    let document = make_svg(fab);
+
+    let output_path = outdir.join(format!("{name}.svg"));
+    svg::save(output_path, &document)?;
 
     Ok(())
 }

@@ -5,6 +5,7 @@ pub mod gcode;
 pub mod svg_input;
 pub mod svg_output;
 
+#[derive(Debug)]
 pub struct Hole {
     center: Coord,
     radius: f64,
@@ -19,23 +20,32 @@ impl Hole {
     }
 }
 
-pub struct FabData {
-    pub contours: MultiPolygon,
-    pub holes: Vec<Hole>,
+#[derive(Debug)]
+pub enum FabData {
+    Contours {
+        contours: MultiPolygon,
+        depths: Vec<f64>,
+    },
+    Plunges {
+        holes: Vec<Hole>,
+        depth: f64,
+    },
+    Spirals {
+        holes: Vec<Hole>,
+        depth: f64,
+        bit_radius: f64,
+    }
 }
 
 impl FabData {
-    pub fn new(contours: MultiPolygon, holes: Vec<Hole>) -> Self {
-        let mut s = Self {
-            contours,
-            holes,
-        };
-        s.unite();
-        s
-    }
+    pub fn contours_with_offset(contours: MultiPolygon, depths: Vec<f64>, offset: f64, resolution: f64) -> Self {
+        let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
 
-    fn unite(&mut self) {
-        let mut contours_united = vec![];
+        let mut contours_offset = vec![];
+        for contour in &contours {
+            contours_offset.extend(contour.offset_with_arc_resolution(offset, arc_resolution).unwrap());
+        }
+        let mut contours = MultiPolygon::from(contours_offset);
 
         let find_next = |polygons: &MultiPolygon, current: &MultiPolygon| -> Option<usize> {
             polygons.iter()
@@ -43,40 +53,23 @@ impl FabData {
                 .find_map(|(i, p)| if p.intersects(current) { Some(i) } else { None })
         };
 
-        while let Some(p_leader) = self.contours.0.pop() {
+        let mut contours_united = vec![];
+        while let Some(p_leader) = contours.0.pop() {
             let mut p_leader = MultiPolygon::from(p_leader);
 
-            while let Some(pi) = find_next(&self.contours, &p_leader) {
-                let p = self.contours.0.remove(pi);
+            while let Some(pi) = find_next(&contours, &p_leader) {
+                let p = contours.0.remove(pi);
                 p_leader = p_leader.union(&p);
             }
 
             contours_united.extend(p_leader.into_iter());
         }
+        let mut contours = MultiPolygon::from(contours_united);
 
-        self.contours = MultiPolygon::from(contours_united);
-    }
-
-    fn simplify(&mut self, simplification: f64) {
-        for contour in &mut self.contours {
-            *contour = contour.simplify(&simplification);
-        }
-    }
-
-    pub fn offset(&mut self, distance: f64, resolution: f64) {
-        let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
-
-        let mut contours_offset = vec![];
-        for contour in &self.contours {
-            contours_offset.extend(contour.offset_with_arc_resolution(distance, arc_resolution).unwrap());
-        }
-        self.contours = MultiPolygon::from(contours_offset);
-
-        for hole in &mut self.holes {
-            hole.radius += distance;
+        for contour in &mut contours {
+            *contour = contour.simplify(&(resolution / 5.0));
         }
 
-        self.unite();
-        self.simplify(resolution / 5.0);
+        Self::Contours { contours, depths }
     }
 }
