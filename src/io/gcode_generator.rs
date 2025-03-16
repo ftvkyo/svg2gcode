@@ -93,6 +93,8 @@ impl GCodeGenerator {
     }
 
     pub fn arc_ccwise(&mut self, end_x: f64, end_y: f64, offset_x: f64, offset_y: f64) {
+        assert_eq!(self.state, SpinningEngaged);
+
         self.actions.push(format!("G17"));
         self.actions.push(format!("G3 X{end_x} Y{end_y} I{offset_x} J{offset_y}"));
     }
