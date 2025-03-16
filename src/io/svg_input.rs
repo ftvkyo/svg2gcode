@@ -1,13 +1,11 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
-use geo::{Coord, LineString, Polygon, RemoveRepeatedPoints};
+use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints};
 use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
-use crate::{config::{BitShape, JobConfig, SharedFabConfig}, shape::{Circle, IntoPolygon, ThickLineString}};
-
-use super::{Hole, FabData};
+use crate::{fab::Hole, shape::{Circle, IntoPolygon, ThickLineString}};
 
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
@@ -254,69 +252,19 @@ impl SvgPrimitives {
         Ok(())
     }
 
-    pub fn into_fab_data(mut self, config: &SharedFabConfig, job: JobConfig) -> Result<FabData> {
-        use crate::config::JobKind::*;
+    pub fn holes(&self) -> Vec<Hole> {
+        self.circles.iter()
+            .map(|c| Hole::new(c.center, c.radius))
+            .collect()
+    }
 
+    pub fn contours(mut self, resolution: f64) -> MultiPolygon {
         self.join_all_lines();
 
-        let holes: Vec<_> = self.circles.iter()
-            .map(|c| Hole::new(c.center, c.radius))
-            .collect();
-
-        let contours = self.circles.into_iter().map(|c| c.into_polygon(config.resolution))
-            .chain(self.lines.into_iter().map(|l| l.into_polygon(config.resolution)))
-            .chain(self.polygons.into_iter());
-
-        match job.kind {
-            EngraveContours { depth } => {
-                let offset = match job.bit_shape {
-                    BitShape::V45Deg => depth,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                return Ok(FabData::contours_with_offset(contours.collect(), vec![depth], offset, config.resolution));
-            },
-            CutContours { depth, depth_per_pass } => {
-                let offset = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let passes = (depth / depth_per_pass.ceil()) as usize;
-
-                let mut depths: Vec<_> = (0..passes).map(|pass| depth_per_pass * pass as f64).collect();
-                if let Some(last) = depths.last().copied() {
-                    if (depth - last).abs() > 0.01 {
-                        depths.push(depth);
-                    }
-                } else {
-                    depths.push(depth);
-                }
-
-                return Ok(FabData::contours_with_offset(contours.collect(), depths, offset, config.resolution));
-            },
-            DrillCircles { depth } => {
-                let radius = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let holes = holes.into_iter().map(|mut h| {
-                    h.radius = radius;
-                    h
-                });
-
-                return Ok(FabData::Plunges { holes: holes.collect(), depth });
-            },
-            BoreCircles { depth } => {
-                let radius = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                return Ok(FabData::Spirals { holes, depth, bit_radius: radius });
-            },
-        }
+        self.circles.into_iter().map(|c| c.into_polygon(resolution))
+            .chain(self.lines.into_iter().map(|l| l.into_polygon(resolution)))
+            .chain(self.polygons.into_iter())
+            .collect()
     }
 }
 

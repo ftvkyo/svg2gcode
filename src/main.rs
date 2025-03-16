@@ -1,5 +1,6 @@
 pub mod io;
 pub mod config;
+pub mod fab;
 pub mod shape;
 
 #[cfg(test)]
@@ -10,7 +11,7 @@ use std::path::PathBuf;
 use anyhow::{ensure, Result};
 use clap::Parser;
 use config::FabConfig;
-use io::FabData;
+use fab::FabData;
 use log::error;
 
 use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
@@ -68,17 +69,18 @@ fn run(outdir: PathBuf, config: FabConfig) -> Result<()> {
 
     let name = config.name;
 
-    let mut fab: Vec<FabData> = Vec::with_capacity(config.jobs.len());
+    let mut fds: Vec<FabData> = Vec::with_capacity(config.jobs.len());
 
     for job in config.jobs {
         let mut content = String::new();
         let parser = svg::open(&job.input, &mut content)?;
         let primitives = process_svg(parser)?;
 
-        fab.push(primitives.into_fab_data(&config.shared, job)?);
+        let fd = FabData::new(&config.shared, job, primitives)?;
+        fds.push(fd);
     }
 
-    let document = make_svg(fab);
+    let document = make_svg(fds);
 
     let output_path = outdir.join(format!("{name}.svg"));
     svg::save(output_path, &document)?;

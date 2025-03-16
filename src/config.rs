@@ -12,16 +12,21 @@ pub enum BitShape {
 pub enum JobKind {
     EngraveContours {
         depth: f64,
+        feed_xy: f64,
     },
     CutContours {
         depth: f64,
         depth_per_pass: f64,
+        feed_xy: f64,
     },
     DrillCircles {
         depth: f64,
+        feed_z: f64,
     },
     BoreCircles {
         depth: f64,
+        feed_z: f64,
+        feed_xy: f64,
     },
 }
 
@@ -35,6 +40,8 @@ pub struct JobConfig {
 #[derive(Debug, Deserialize)]
 pub struct SharedFabConfig {
     pub resolution: f64,
+    pub rapid_feed: f64,
+    pub rapid_height: f64,
 }
 
 #[derive(Debug, Deserialize)]
