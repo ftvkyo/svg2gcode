@@ -32,28 +32,16 @@ fn main() {
 
     env_logger::init();
     let args = Args::parse();
-
-    let config = match get_config(&args) {
-        Ok(config) => config,
-        Err(err) => {
-            error!("{err}");
-            std::process::exit(1);
-        },
-    };
-
-    if let Err(err) = run(config) {
+    if let Err(err) = run(args) {
         error!("{err}");
         std::process::exit(1);
     }
 }
 
 
-fn get_config(args: &Args) -> Result<FabConfig> {
-    Ok(serde_norway::from_reader(std::fs::File::open(&args.config)?)?)
-}
+fn run(args: Args) -> Result<()> {
+    let config: FabConfig = serde_norway::from_reader(std::fs::File::open(&args.config)?)?;
 
-
-fn run(config: FabConfig) -> Result<()> {
     if !config.outdir.exists() {
         std::fs::create_dir_all(&config.outdir)?;
     }
