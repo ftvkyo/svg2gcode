@@ -68,17 +68,17 @@ fn run(config: FabConfig) -> Result<()> {
         let parser = svg::open(&job.input, &mut content)?;
         let primitives = process_svg(parser)?;
 
-        info!("Processed the SVG for job {i:02}");
+        info!("Job {i:02} - processed the SVG");
 
         let fd = FabData::new(&config.shared, job, primitives)?;
 
-        info!("Generated fabdata for job {i:02}");
+        info!("Job {i:02} - generated the fabdata");
 
         let output_path = config.outdir.join(format!("{name}-{i:02}.ngc"));
         let ngc = make_gcode(&config.shared, &fd);
         std::fs::write(output_path, ngc)?;
 
-        info!("Produced G-Code for job {i:02}");
+        info!("Job {i:02} - produced the G-Code");
 
         fds.push(fd);
     }
@@ -86,6 +86,8 @@ fn run(config: FabConfig) -> Result<()> {
     let document = make_svg(&fds);
     let output_path = config.outdir.join(format!("{name}.svg"));
     svg::save(output_path, &document)?;
+
+    info!("Produced the overview SVG");
 
     Ok(())
 }
