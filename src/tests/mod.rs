@@ -8,7 +8,7 @@ use anyhow::{ensure, Result};
 use geo::Coord;
 use svg::node::element;
 
-use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
+use crate::{config::SharedFabConfig, io::{svg_input::process_svg, svg_output::make_svg}};
 
 pub const OUTDIR: &'_ str = "tmp/test-output/";
 
@@ -44,12 +44,15 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
     let mut content = String::new();
     let parser = svg::open(&input, &mut content)?;
 
+    let resolution = 0.1;
+
     let primitives = process_svg(parser)?;
-    let mut data = primitives.into_machining_data(offset.unwrap_or(0.0), 0.1);
-    data.unite();
+    let mut data = primitives.into_fab_data(&SharedFabConfig { resolution });
+    if let Some(distance) = offset {
+        data.offset(distance, resolution);
+    }
 
     let doc = make_svg(data);
-
     svg::save(output, &doc)?;
 
     Ok(())

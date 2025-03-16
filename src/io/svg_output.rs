@@ -1,7 +1,7 @@
 use geo::Point;
 use svg::{node::element, Document};
 
-use super::MachiningData;
+use super::FabData;
 
 fn make_svg_path(mut points: impl Iterator<Item = Point>) -> element::Path {
     let p0 = points.next().unwrap();
@@ -20,7 +20,7 @@ fn make_svg_path(mut points: impl Iterator<Item = Point>) -> element::Path {
         .set("vector-effect", "non-scaling-stroke")
 }
 
-pub fn make_svg(data: MachiningData) -> Document {
+pub fn make_svg(data: FabData) -> Document {
     let mut min_x: f64 = 0.0;
     let mut max_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
@@ -31,7 +31,7 @@ pub fn make_svg(data: MachiningData) -> Document {
         .set("stroke", "black")
         .set("stroke-width", 1);
 
-    for polygon in data.contours() {
+    for polygon in data.contours {
         let exterior = polygon.exterior();
 
         for p in exterior.points() {
@@ -51,12 +51,12 @@ pub fn make_svg(data: MachiningData) -> Document {
         }
     }
 
-    let mut g_drilling = element::Group::new()
+    let mut g_holes = element::Group::new()
         .set("fill", "#89356688")
         .set("stroke", "none");
 
-    for hole in data.holes() {
-        g_drilling = g_drilling.add(element::Circle::new()
+    for hole in data.holes {
+        g_holes = g_holes.add(element::Circle::new()
             .set("cx", hole.center.x)
             .set("cy", hole.center.y)
             .set("r", hole.radius / 2.0));
@@ -64,6 +64,6 @@ pub fn make_svg(data: MachiningData) -> Document {
 
     Document::new()
         .add(g_contours)
-        .add(g_drilling)
+        .add(g_holes)
         .set("viewBox", (min_x - 5.0, min_y - 5.0, max_x - min_x + 10.0, max_y - min_y + 10.0))
 }

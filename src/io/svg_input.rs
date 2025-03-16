@@ -1,14 +1,13 @@
 use std::collections::HashMap;
 
 use anyhow::{bail, ensure, Context, Result};
-use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints, Simplify};
-use geo_offset::Offset;
+use geo::{Coord, LineString, MultiPolygon, Polygon, RemoveRepeatedPoints};
 use log::{error, warn};
 use svg::{node::element::{path, tag}, parser::Event, Parser};
 
-use crate::shape::{Circle, IntoPolygon, ThickLineString};
+use crate::{config::SharedFabConfig, shape::{Circle, IntoPolygon, ThickLineString}};
 
-use super::{Hole, MachiningData};
+use super::{Hole, FabData};
 
 pub struct SvgContext {
     stroke_width: Vec<Option<f64>>,
@@ -255,22 +254,17 @@ impl SvgPrimitives {
         Ok(())
     }
 
-    pub fn into_machining_data(mut self, offset: f64, resolution: f64) -> MachiningData {
+    pub fn into_fab_data(mut self, config: &SharedFabConfig) -> FabData {
         self.join_all_lines();
 
         let holes = self.circles.iter().map(|c| Hole::new(c.center, c.radius)).collect();
 
-        let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
-        let simplification = resolution / 5.0;
-
-        let contours: Vec<_> = self.circles.into_iter().map(|c| c.into_polygon(resolution))
-            .chain(self.lines.into_iter().map(|l| l.into_polygon(resolution)))
+        let contours: Vec<_> = self.circles.into_iter().map(|c| c.into_polygon(config.resolution))
+            .chain(self.lines.into_iter().map(|l| l.into_polygon(config.resolution)))
             .chain(self.polygons.into_iter())
-            .flat_map(|p| p.offset_with_arc_resolution(offset, arc_resolution).unwrap())
-            .map(|p| p.simplify(&simplification))
             .collect();
 
-        MachiningData {
+        FabData {
             holes,
             contours: MultiPolygon(contours),
         }

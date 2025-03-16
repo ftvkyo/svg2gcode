@@ -1,4 +1,5 @@
 use geo::{BooleanOps, Coord, Intersects, MultiPolygon, Simplify};
+use geo_offset::Offset;
 
 pub mod gcode;
 pub mod svg_input;
@@ -18,29 +19,23 @@ impl Hole {
     }
 }
 
-pub struct MachiningData {
-    contours: MultiPolygon,
-    holes: Vec<Hole>,
+pub struct FabData {
+    pub contours: MultiPolygon,
+    pub holes: Vec<Hole>,
 }
 
-impl MachiningData {
+impl FabData {
     pub fn new(contours: MultiPolygon, holes: Vec<Hole>) -> Self {
-        Self {
+        let mut s = Self {
             contours,
             holes,
-        }
+        };
+        s.unite();
+        s
     }
 
-    pub fn contours(&self) -> &MultiPolygon {
-        &self.contours
-    }
-
-    pub fn holes(&self) -> &Vec<Hole> {
-        &self.holes
-    }
-
-    pub fn unite(&mut self) {
-        let mut result = vec![];
+    fn unite(&mut self) {
+        let mut contours_united = vec![];
 
         let find_next = |polygons: &MultiPolygon, current: &MultiPolygon| -> Option<usize> {
             polygons.iter()
@@ -56,15 +51,32 @@ impl MachiningData {
                 p_leader = p_leader.union(&p);
             }
 
-            result.extend(p_leader.into_iter());
+            contours_united.extend(p_leader.into_iter());
         }
 
-        self.contours = MultiPolygon::from(result);
+        self.contours = MultiPolygon::from(contours_united);
     }
 
-    pub fn simplify(&mut self, simplification: f64) {
+    fn simplify(&mut self, simplification: f64) {
         for contour in &mut self.contours {
             *contour = contour.simplify(&simplification);
         }
+    }
+
+    pub fn offset(&mut self, distance: f64, resolution: f64) {
+        let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
+
+        let mut contours_offset = vec![];
+        for contour in &self.contours {
+            contours_offset.extend(contour.offset_with_arc_resolution(distance, arc_resolution).unwrap());
+        }
+        self.contours = MultiPolygon::from(contours_offset);
+
+        for hole in &mut self.holes {
+            hole.radius += distance;
+        }
+
+        self.unite();
+        self.simplify(resolution / 5.0);
     }
 }
