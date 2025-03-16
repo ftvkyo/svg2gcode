@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use anyhow::Result;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize, PartialEq)]
@@ -46,4 +47,20 @@ pub struct FabConfig {
     pub outdir: PathBuf,
     pub shared: SharedFabConfig,
     pub jobs: Vec<JobConfig>,
+}
+
+impl FabConfig {
+    pub fn from_file(path: &std::path::Path) -> Result<Self> {
+        Ok(serde_norway::from_reader(std::fs::File::open(&path)?)?)
+    }
+
+    pub fn relative_to(mut self, path: &std::path::Path) -> Self {
+        self.outdir = path.join(&self.outdir);
+
+        for job in &mut self.jobs {
+            job.input = path.join(&job.input);
+        }
+
+        self
+    }
 }

@@ -6,7 +6,7 @@ pub mod shape;
 #[cfg(test)]
 mod tests;
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{ensure, Result};
 use clap::Parser;
@@ -40,7 +40,8 @@ fn main() {
 
 
 fn run(args: Args) -> Result<()> {
-    let config: FabConfig = serde_norway::from_reader(std::fs::File::open(&args.config)?)?;
+    let config = FabConfig::from_file(&args.config)?
+        .relative_to(&args.config.parent().unwrap_or(Path::new(".")));
 
     if !config.outdir.exists() {
         std::fs::create_dir_all(&config.outdir)?;
