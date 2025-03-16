@@ -50,22 +50,22 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
 
     let fab_config = SharedFabConfig {
         resolution,
-        rapid_feed: 0.0,
-        rapid_height: 0.0,
+        safe_height: 0.0,
     };
 
     let job_config = JobConfig {
         kind: JobKind::EngraveContours {
             depth: offset.unwrap_or(0.0),
-            feed_xy: 0.0,
         },
         input,
         bit_shape: BitShape::V45Deg,
+        feed: 0.0,
+        rpm: 0.0,
     };
 
     let fd = FabData::new(&fab_config, job_config, primitives)?;
 
-    let doc = make_svg(vec![fd]);
+    let doc = make_svg(&vec![fd]);
     svg::save(output, &doc)?;
 
     Ok(())

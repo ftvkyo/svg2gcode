@@ -12,7 +12,8 @@ use anyhow::{ensure, Result};
 use clap::Parser;
 use config::FabConfig;
 use fab::FabData;
-use log::error;
+use io::gcode::make_gcode;
+use log::{error, info};
 
 use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
 
@@ -20,11 +21,7 @@ use crate::{io::svg_input::process_svg, io::svg_output::make_svg};
 #[derive(Parser)]
 pub struct Args {
     /// Path to the fabrication config.
-    /// The config is read from stdin if no path is provided.
-    pub config: Option<PathBuf>,
-
-    /// Output directory.
-    pub output: PathBuf,
+    pub config: PathBuf,
 }
 
 
@@ -44,7 +41,7 @@ fn main() {
         },
     };
 
-    if let Err(err) = run(args.output, config) {
+    if let Err(err) = run(config) {
         error!("{err}");
         std::process::exit(1);
     }
@@ -52,37 +49,42 @@ fn main() {
 
 
 fn get_config(args: &Args) -> Result<FabConfig> {
-    let config = if let Some(config) = &args.config {
-        serde_norway::from_reader(std::fs::File::open(config)?)?
-    } else {
-        serde_norway::from_reader(std::io::stdin())?
-    };
-    Ok(config)
+    Ok(serde_norway::from_reader(std::fs::File::open(&args.config)?)?)
 }
 
 
-fn run(outdir: PathBuf, config: FabConfig) -> Result<()> {
-    if !outdir.exists() {
-        std::fs::create_dir_all(&outdir)?;
+fn run(config: FabConfig) -> Result<()> {
+    if !config.outdir.exists() {
+        std::fs::create_dir_all(&config.outdir)?;
     }
-    ensure!(outdir.is_dir(), "{:?} should be a directory", outdir);
+    ensure!(config.outdir.is_dir(), "{:?} should be a directory", config.outdir);
 
     let name = config.name;
 
     let mut fds: Vec<FabData> = Vec::with_capacity(config.jobs.len());
 
-    for job in config.jobs {
+    for (i, job) in config.jobs.into_iter().enumerate() {
         let mut content = String::new();
         let parser = svg::open(&job.input, &mut content)?;
         let primitives = process_svg(parser)?;
 
+        info!("Processed the SVG for job {i:02}");
+
         let fd = FabData::new(&config.shared, job, primitives)?;
+
+        info!("Generated fabdata for job {i:02}");
+
+        let output_path = config.outdir.join(format!("{name}-{i:02}.ngc"));
+        let ngc = make_gcode(&config.shared, &fd);
+        std::fs::write(output_path, ngc)?;
+
+        info!("Produced G-Code for job {i:02}");
+
         fds.push(fd);
     }
 
-    let document = make_svg(fds);
-
-    let output_path = outdir.join(format!("{name}.svg"));
+    let document = make_svg(&fds);
+    let output_path = config.outdir.join(format!("{name}.svg"));
     svg::save(output_path, &document)?;
 
     Ok(())

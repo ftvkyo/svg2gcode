@@ -58,7 +58,7 @@ fn make_svg_path(mut points: impl Iterator<Item = Point>, view_box: &mut ViewBox
         .set("vector-effect", "non-scaling-stroke")
 }
 
-fn make_svg_paths(polygons: MultiPolygon, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_paths(polygons: &MultiPolygon, view_box: &mut ViewBox) -> element::Group {
     let mut g_contours = element::Group::new()
         .set("fill", "#4774AA22")
         .set("stroke", "black")
@@ -77,7 +77,7 @@ fn make_svg_paths(polygons: MultiPolygon, view_box: &mut ViewBox) -> element::Gr
     g_contours
 }
 
-fn make_svg_holes(holes: Vec<Hole>, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_holes(holes: &Vec<Hole>, view_box: &mut ViewBox) -> element::Group {
     let mut g_holes = element::Group::new()
         .set("fill", "#89356688")
         .set("stroke", "none");
@@ -94,7 +94,7 @@ fn make_svg_holes(holes: Vec<Hole>, view_box: &mut ViewBox) -> element::Group {
     g_holes
 }
 
-pub fn make_svg(fds: Vec<FabData>) -> Document {
+pub fn make_svg(fds: &Vec<FabData>) -> Document {
     let mut view_box = ViewBox::new();
 
     let mut doc = Document::new();
@@ -102,8 +102,8 @@ pub fn make_svg(fds: Vec<FabData>) -> Document {
     for data in fds {
         let g = match data {
             FabData::Contours { contours, .. } => make_svg_paths(contours, &mut view_box),
-            FabData::Plunges { holes, .. } => make_svg_holes(holes, &mut view_box),
-            FabData::Spirals { holes, .. } => make_svg_holes(holes, &mut view_box),
+            FabData::Drilling { holes, .. } => make_svg_holes(holes, &mut view_box),
+            FabData::Boring { holes, .. } => make_svg_holes(holes, &mut view_box),
         };
 
         doc = doc.add(g);
