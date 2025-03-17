@@ -22,6 +22,7 @@ impl GCodeGenerator {
             state: GCodeState::Stopped,
             actions: vec![
                 format!("G90"), // Absolute
+                format!("G21"), // Use millimeters
                 format!("F{feed}"), // Feed
                 format!("S{rpm}"), // Spindle
                 format!("G0 Z{safe_height}"), // Go to safe height
