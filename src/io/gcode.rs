@@ -1,33 +1,44 @@
 use std::iter::once;
 
-use geo::{Coord, MultiPolygon};
+use geo::{Coord, LineString, MultiPolygon, Vector2DOps};
 
 use crate::{config::SharedFabConfig, fab::{FabData, FabDataKind, Hole}, io::gcode_generator::GCodeGenerator};
 
 
+fn find_next_contour(contours: &Vec<&LineString>, now: Coord) -> usize {
+    let mut contours: Vec<_> = contours.iter().copied().enumerate().collect();
+
+    contours.sort_by(|(_, a), (_, b)| (a.0[0] - now).magnitude_squared().total_cmp(&(b.0[0] - now).magnitude_squared()));
+
+    return contours[0].0;
+}
+
+
 fn make_gcode_contours(config: &SharedFabConfig, polygons: &MultiPolygon, depths: &Vec<f64>, feed: f64, rpm: f64) -> String {
+    let mut contours: Vec<_> = polygons.into_iter().flat_map(|p| p.interiors().into_iter().chain(once(p.exterior()))).collect();
+
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
     gcode.spindle_start_cwise();
 
-    for poly in polygons {
-        for contour in poly.interiors().into_iter().chain(once(poly.exterior())) {
+    let mut now = Coord { x: 0.0, y: 0.0 };
+    while !contours.is_empty() {
+        let contour = contours.remove(find_next_contour(&contours, now));
+        now = contour.0[0];
 
-            for &depth in depths {
-                let mut points = contour.coords();
-                let p0 = points.next().unwrap();
-                gcode.rapid(p0.x, p0.y);
+        for &depth in depths {
+            let mut points = contour.coords();
+            let p0 = points.next().unwrap();
+            gcode.rapid(p0.x, p0.y);
 
-                gcode.engage();
-                gcode.move_z(-depth);
+            gcode.engage();
+            gcode.move_z(-depth);
 
-                while let Some(p) = points.next() {
-                    gcode.move_xy(p.x, p.y);
-                }
-
-                gcode.disengage();
+            while let Some(p) = points.next() {
+                gcode.move_xy(p.x, p.y);
             }
 
+            gcode.disengage();
         }
     }
 
@@ -37,12 +48,27 @@ fn make_gcode_contours(config: &SharedFabConfig, polygons: &MultiPolygon, depths
 }
 
 
+fn find_next_hole(holes: &Vec<&Hole>, now: Coord) -> usize {
+    let mut holes: Vec<_> = holes.iter().copied().enumerate().collect();
+
+    holes.sort_by(|(_, a), (_, b)| (a.center - now).magnitude_squared().total_cmp(&(b.center - now).magnitude_squared()));
+
+    return holes[0].0;
+}
+
+
 fn make_gcode_drilling(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, feed: f64, rpm: f64) -> String {
+    let mut holes: Vec<_> = holes.iter().collect();
+
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
     gcode.spindle_start_cwise();
 
-    for hole in holes {
+    let mut now = Coord { x: 0.0, y: 0.0 };
+    while !holes.is_empty() {
+        let hole = holes.remove(find_next_hole(&holes, now));
+        now = hole.center;
+
         gcode.rapid(hole.center.x, hole.center.y);
         gcode.engage();
         gcode.move_z(-depth);
@@ -56,11 +82,17 @@ fn make_gcode_drilling(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, 
 
 
 fn make_gcode_boring(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, bit_radius: f64, feed: f64, rpm: f64) -> String {
+    let mut holes: Vec<_> = holes.iter().collect();
+
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
     gcode.spindle_start_ccwise();
 
-    for hole in holes {
+    let mut now = Coord { x: 0.0, y: 0.0 };
+    while !holes.is_empty() {
+        let hole = holes.remove(find_next_hole(&holes, now));
+        now = hole.center;
+
         let offset = Coord {
             x: hole.radius - bit_radius,
             y: 0.0,
