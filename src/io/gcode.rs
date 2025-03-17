@@ -2,7 +2,7 @@ use std::iter::once;
 
 use geo::{Coord, MultiPolygon};
 
-use crate::{config::SharedFabConfig, fab::{FabData, Hole}, io::gcode_generator::GCodeGenerator};
+use crate::{config::SharedFabConfig, fab::{FabData, FabDataKind, Hole}, io::gcode_generator::GCodeGenerator};
 
 
 fn make_gcode_contours(config: &SharedFabConfig, polygons: &MultiPolygon, depths: &Vec<f64>, feed: f64, rpm: f64) -> String {
@@ -84,9 +84,11 @@ fn make_gcode_boring(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, bi
 
 
 pub fn make_gcode(config: &SharedFabConfig, fd: &FabData) -> String {
-    match fd {
-        FabData::Contours { contours, depths, feed, rpm } => make_gcode_contours(config, contours, depths, *feed, *rpm),
-        FabData::Drilling { holes, depth, feed, rpm } => make_gcode_drilling(config, holes, *depth, *feed, *rpm),
-        FabData::Boring { holes, depth, bit_radius, feed, rpm } => make_gcode_boring(config, holes, *depth, *bit_radius, *feed, *rpm),
+    let feed = fd.feed;
+    let rpm = fd.rpm;
+    match &fd.kind {
+        FabDataKind::Contours { contours, depths } => make_gcode_contours(config, contours, depths, feed, rpm),
+        FabDataKind::Drilling { holes, depth } => make_gcode_drilling(config, holes, *depth, feed, rpm),
+        FabDataKind::Boring { holes, depth, bit_radius } => make_gcode_boring(config, holes, *depth, *bit_radius, feed, rpm),
     }
 }

@@ -1,7 +1,7 @@
 use geo::{MultiPolygon, Point};
 use svg::{node::element, Document};
 
-use crate::fab::{FabData, Hole};
+use crate::fab::{FabData, FabDataKind, Hole};
 
 pub struct ViewBox {
     pub min_x: f64,
@@ -100,10 +100,10 @@ pub fn make_svg(fds: &Vec<FabData>) -> Document {
     let mut doc = Document::new();
 
     for data in fds {
-        let g = match data {
-            FabData::Contours { contours, .. } => make_svg_paths(contours, &mut view_box),
-            FabData::Drilling { holes, .. } => make_svg_holes(holes, &mut view_box),
-            FabData::Boring { holes, .. } => make_svg_holes(holes, &mut view_box),
+        let g = match &data.kind {
+            FabDataKind::Contours { contours, .. } => make_svg_paths(contours, &mut view_box),
+            FabDataKind::Drilling { holes, .. } => make_svg_holes(holes, &mut view_box),
+            FabDataKind::Boring { holes, .. } => make_svg_holes(holes, &mut view_box),
         };
 
         doc = doc.add(g);

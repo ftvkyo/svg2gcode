@@ -20,91 +20,24 @@ impl Hole {
 }
 
 #[derive(Debug)]
-pub enum FabData {
+pub enum FabDataKind {
     Contours {
         contours: MultiPolygon,
         depths: Vec<f64>,
-        feed: f64,
-        rpm: f64,
     },
     Drilling {
         holes: Vec<Hole>,
         depth: f64,
-        feed: f64,
-        rpm: f64,
     },
     Boring {
         holes: Vec<Hole>,
         depth: f64,
         bit_radius: f64,
-        feed: f64,
-        rpm: f64,
     }
 }
 
-impl FabData {
-    pub fn new(config: &SharedFabConfig, job: JobConfig, primitives: SvgPrimitives) -> Result<Self> {
-        use crate::config::{BitShape, JobKind::*};
-
-        match job.kind {
-            EngraveContours { depth } => {
-                let offset = match job.bit_shape {
-                    BitShape::V45Deg => depth,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let contours = primitives.contours(config.resolution);
-                return Ok(FabData::contours_with_offset(contours, vec![depth], job.feed, job.rpm, offset, config.resolution));
-            },
-            CutContours { depth, depth_per_pass } => {
-                let offset = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let passes = (depth / depth_per_pass.ceil()) as usize;
-
-                let mut depths: Vec<_> = (0..passes).map(|pass| depth_per_pass * pass as f64).collect();
-                if let Some(last) = depths.last().copied() {
-                    if (depth - last).abs() > 0.01 {
-                        depths.push(depth);
-                    }
-                } else {
-                    depths.push(depth);
-                }
-
-                let contours = primitives.contours(config.resolution);
-                return Ok(FabData::contours_with_offset(contours, depths, job.feed, job.rpm, offset, config.resolution));
-            },
-            DrillCircles { depth } => {
-                let radius = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let holes = primitives.holes()
-                    .into_iter()
-                    .map(|mut h| {
-                        h.radius = radius;
-                        h
-                    })
-                    .collect();
-
-                return Ok(FabData::Drilling { holes, depth, feed: job.feed, rpm: job.rpm });
-            },
-            BoreCircles { depth } => {
-                let bit_radius = match job.bit_shape {
-                    BitShape::Square { radius } => radius,
-                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
-                };
-
-                let holes = primitives.holes();
-                return Ok(FabData::Boring { holes, depth, bit_radius, feed: job.feed, rpm: job.rpm });
-            },
-        }
-    }
-
-    fn contours_with_offset(contours: MultiPolygon, depths: Vec<f64>, feed: f64, rpm: f64, offset: f64, resolution: f64) -> Self {
+impl FabDataKind {
+    pub fn contours_with_offset(contours: MultiPolygon, depths: Vec<f64>, offset: f64, resolution: f64) -> Self {
         let arc_resolution = geo_offset::ArcResolution::SegmentLength(resolution);
 
         let mut contours_offset = vec![];
@@ -136,6 +69,97 @@ impl FabData {
             *contour = contour.simplify(&(resolution / 5.0));
         }
 
-        Self::Contours { contours, depths, feed, rpm }
+        Self::Contours { contours, depths }
+    }
+}
+
+#[derive(Debug)]
+pub struct FabData {
+    pub kind: FabDataKind,
+    pub feed: f64,
+    pub rpm: f64,
+}
+
+impl FabData {
+    pub fn new(config: &SharedFabConfig, job: JobConfig, primitives: SvgPrimitives) -> Result<Self> {
+        use crate::config::{BitShape, JobKind::*};
+
+        match job.kind {
+            EngraveContours { depth } => {
+                let offset = match job.bit_shape {
+                    BitShape::V45Deg => depth,
+                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
+                };
+
+                let contours = primitives.contours(config.resolution);
+                return Ok(FabData {
+                    kind: FabDataKind::contours_with_offset(contours, vec![depth], offset, config.resolution),
+                    feed: job.feed,
+                    rpm: job.rpm,
+                });
+            },
+            CutContours { depth, depth_per_pass } => {
+                let offset = match job.bit_shape {
+                    BitShape::Square { radius } => radius,
+                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
+                };
+
+                let passes = (depth / depth_per_pass.ceil()) as usize;
+
+                let mut depths: Vec<_> = (0..passes).map(|pass| depth_per_pass * pass as f64).collect();
+                if let Some(last) = depths.last().copied() {
+                    if (depth - last).abs() > 0.01 {
+                        depths.push(depth);
+                    }
+                } else {
+                    depths.push(depth);
+                }
+
+                let contours = primitives.contours(config.resolution);
+                return Ok(FabData {
+                    kind: FabDataKind::contours_with_offset(contours, depths, offset, config.resolution),
+                    feed: job.feed,
+                    rpm: job.rpm,
+                });
+            },
+            DrillCircles { depth } => {
+                let radius = match job.bit_shape {
+                    BitShape::Square { radius } => radius,
+                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
+                };
+
+                let holes = primitives.holes()
+                    .into_iter()
+                    .map(|mut h| {
+                        h.radius = radius;
+                        h
+                    })
+                    .collect();
+
+                let fd = FabData {
+                    kind: FabDataKind::Drilling { holes, depth },
+                    feed: job.feed,
+                    rpm: job.rpm,
+                };
+
+                return Ok(fd);
+            },
+            BoreCircles { depth } => {
+                let bit_radius = match job.bit_shape {
+                    BitShape::Square { radius } => radius,
+                    _ => bail!("Unsupported bit shape: {:?}", job.bit_shape),
+                };
+
+                let holes = primitives.holes();
+
+                let fd = FabData {
+                    kind: FabDataKind::Boring { holes, depth, bit_radius },
+                    feed: job.feed,
+                    rpm: job.rpm,
+                };
+
+                return Ok(fd);
+            },
+        }
     }
 }
