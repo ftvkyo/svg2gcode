@@ -1,7 +1,7 @@
 use std::slice::Windows;
 
 use geo::{line_intersection::line_intersection, Centroid, Coord, Euclidean, Length, Line, LineIntersection, LineString, Polygon, Vector2DOps};
-use log::debug;
+use log::{debug, warn};
 
 use super::{IntoPolygon, LineExt, EPSILON};
 
@@ -76,6 +76,11 @@ impl IntoPolygon for ThickLineString {
             mut inner,
             thickness,
         } = self;
+
+        if inner.is_closed() {
+            warn!("Found a closed loop of lines, ignoring thickness and interpreting as a polygon.");
+            return Polygon::new(inner, vec![]);
+        }
 
         let offset = thickness / 2.0;
 

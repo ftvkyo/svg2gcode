@@ -252,17 +252,19 @@ impl SvgPrimitives {
         Ok(())
     }
 
-    pub fn holes(&self) -> Vec<Hole> {
+    pub fn holes(&self) -> impl Iterator<Item = Hole> {
         self.circles.iter()
             .map(|c| Hole::new(c.center, c.radius))
-            .collect()
     }
 
-    pub fn contours(mut self, resolution: f64) -> MultiPolygon {
+    pub fn polygons(mut self, resolution: f64) -> MultiPolygon {
         self.join_all_lines();
 
         self.circles.into_iter().map(|c| c.into_polygon(resolution))
-            .chain(self.lines.into_iter().map(|l| l.into_polygon(resolution)))
+            .chain(self.lines.into_iter().map(|l| {
+                
+                l.into_polygon(resolution)
+            }))
             .chain(self.polygons.into_iter())
             .collect()
     }

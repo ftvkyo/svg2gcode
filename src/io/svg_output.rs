@@ -1,7 +1,7 @@
-use geo::{MultiPolygon, Point};
+use geo::{LineString, Point};
 use svg::{node::element, Document};
 
-use crate::fab::{FabData, FabDataKind, Hole};
+use crate::fab::{FabContourData, FabData, FabHoleData, FabOperation, Hole};
 
 pub struct ViewBox {
     pub min_x: f64,
@@ -58,28 +58,22 @@ fn make_svg_path(mut points: impl Iterator<Item = Point>, view_box: &mut ViewBox
         .set("vector-effect", "non-scaling-stroke")
 }
 
-fn make_svg_paths(polygons: &MultiPolygon, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_paths(contours: &Vec<LineString>, view_box: &mut ViewBox) -> element::Group {
     let mut g_contours = element::Group::new()
         .set("fill", "#4774AA22")
         .set("stroke", "black")
         .set("stroke-width", 1);
 
-    for polygon in polygons {
-        let exterior = polygon.exterior();
-
-        g_contours = g_contours.add(make_svg_path(exterior.points().skip(1), view_box));
-
-        for interior in polygon.interiors() {
-            g_contours = g_contours.add(make_svg_path(interior.points().skip(1), view_box));
-        }
+    for contour in contours {
+        g_contours = g_contours.add(make_svg_path(contour.points().skip(1), view_box));
     }
 
     g_contours
 }
 
-fn make_svg_holes(holes: &Vec<Hole>, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_holes(holes: &Vec<Hole>, color: &str, view_box: &mut ViewBox) -> element::Group {
     let mut g_holes = element::Group::new()
-        .set("fill", "#89356688")
+        .set("fill", color)
         .set("stroke", "none");
 
     for hole in holes {
@@ -100,10 +94,12 @@ pub fn make_svg(fds: &Vec<FabData>) -> Document {
     let mut doc = Document::new();
 
     for data in fds {
-        let g = match &data.kind {
-            FabDataKind::Contours { contours, .. } => make_svg_paths(contours, &mut view_box),
-            FabDataKind::Drilling { holes, .. } => make_svg_holes(holes, &mut view_box),
-            FabDataKind::Boring { holes, .. } => make_svg_holes(holes, &mut view_box),
+        let g = match &data.operation {
+            | FabOperation::Engrave(FabContourData { contours, .. })
+            | FabOperation::Cut(FabContourData { contours, .. }) => make_svg_paths(contours, &mut view_box),
+
+            FabOperation::Drilling(FabHoleData { holes, .. }) => make_svg_holes(holes, "#32954488", &mut view_box),
+            FabOperation::Boring { data: FabHoleData { holes, .. }, .. } => make_svg_holes(holes, "#89356688", &mut view_box),
         };
 
         doc = doc.add(g);

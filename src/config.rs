@@ -20,9 +20,14 @@ pub enum JobKind {
     },
     DrillCircles {
         depth: f64,
+        radius_min: Option<f64>,
+        radius_max: Option<f64>,
     },
     BoreCircles {
         depth: f64,
+        depth_per_turn: f64,
+        radius_min: Option<f64>,
+        radius_max: Option<f64>,
     },
 }
 

@@ -1,8 +1,6 @@
-use std::iter::once;
+use geo::{Coord, LineString, Vector2DOps};
 
-use geo::{Coord, LineString, MultiPolygon, Vector2DOps};
-
-use crate::{config::SharedFabConfig, fab::{FabData, FabDataKind, Hole}, io::gcode_generator::GCodeGenerator};
+use crate::{config::SharedFabConfig, fab::{FabContourData, FabData, FabHoleData, FabOperation, Hole}, io::gcode_generator::GCodeGenerator};
 
 
 fn find_next_contour(contours: &Vec<&LineString>, now: Coord) -> usize {
@@ -14,8 +12,8 @@ fn find_next_contour(contours: &Vec<&LineString>, now: Coord) -> usize {
 }
 
 
-fn make_gcode_contours(config: &SharedFabConfig, polygons: &MultiPolygon, depths: &Vec<f64>, feed: f64, rpm: f64) -> String {
-    let mut contours: Vec<_> = polygons.into_iter().flat_map(|p| p.interiors().into_iter().chain(once(p.exterior()))).collect();
+fn make_gcode_contours(config: &SharedFabConfig, data: &FabContourData, feed: f64, rpm: f64) -> String {
+    let mut contours: Vec<_> = data.contours.iter().collect();
 
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
@@ -26,7 +24,7 @@ fn make_gcode_contours(config: &SharedFabConfig, polygons: &MultiPolygon, depths
         let contour = contours.remove(find_next_contour(&contours, now));
         now = contour.0[0];
 
-        for &depth in depths {
+        for &depth in &data.depths {
             let mut points = contour.coords();
             let p0 = points.next().unwrap();
             gcode.rapid(p0.x, p0.y);
@@ -57,8 +55,8 @@ fn find_next_hole(holes: &Vec<&Hole>, now: Coord) -> usize {
 }
 
 
-fn make_gcode_drilling(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, feed: f64, rpm: f64) -> String {
-    let mut holes: Vec<_> = holes.iter().collect();
+fn make_gcode_drilling(config: &SharedFabConfig, data: &FabHoleData, feed: f64, rpm: f64) -> String {
+    let mut holes: Vec<_> = data.holes.iter().collect();
 
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
@@ -71,7 +69,7 @@ fn make_gcode_drilling(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, 
 
         gcode.rapid(hole.center.x, hole.center.y);
         gcode.engage();
-        gcode.move_z(-depth);
+        gcode.move_z(-data.depth);
         gcode.disengage();
     }
 
@@ -81,8 +79,8 @@ fn make_gcode_drilling(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, 
 }
 
 
-fn make_gcode_boring(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, bit_radius: f64, feed: f64, rpm: f64) -> String {
-    let mut holes: Vec<_> = holes.iter().collect();
+fn make_gcode_boring(config: &SharedFabConfig, data: &FabHoleData, depth_per_turn: f64, bit_radius: f64, feed: f64, rpm: f64) -> String {
+    let mut holes: Vec<_> = data.holes.iter().collect();
 
     let mut gcode = GCodeGenerator::new(feed, rpm, config.safe_height);
 
@@ -100,11 +98,11 @@ fn make_gcode_boring(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, bi
 
         let helix = hole.center + offset;
 
-        let turns = (depth / 0.25) as usize;
+        let turns = (data.depth / depth_per_turn) as usize;
 
         gcode.rapid(helix.x, helix.y);
         gcode.engage();
-        gcode.helix_ccwise(helix.x, helix.y, -depth, -offset.x, -offset.y, turns);
+        gcode.helix_ccwise(helix.x, helix.y, -data.depth, -offset.x, -offset.y, turns);
         gcode.arc_ccwise(helix.x, helix.y, -offset.x, -offset.y);
         gcode.disengage();
     }
@@ -118,9 +116,16 @@ fn make_gcode_boring(config: &SharedFabConfig, holes: &Vec<Hole>, depth: f64, bi
 pub fn make_gcode(config: &SharedFabConfig, fd: &FabData) -> String {
     let feed = fd.feed;
     let rpm = fd.rpm;
-    match &fd.kind {
-        FabDataKind::Contours { contours, depths } => make_gcode_contours(config, contours, depths, feed, rpm),
-        FabDataKind::Drilling { holes, depth } => make_gcode_drilling(config, holes, *depth, feed, rpm),
-        FabDataKind::Boring { holes, depth, bit_radius } => make_gcode_boring(config, holes, *depth, *bit_radius, feed, rpm),
+    match &fd.operation {
+        | FabOperation::Engrave(data)
+        | FabOperation::Cut(data) => make_gcode_contours(config, data, feed, rpm),
+
+        FabOperation::Drilling(data) => make_gcode_drilling(config, data, feed, rpm),
+
+        FabOperation::Boring {
+            data,
+            depth_per_turn,
+            bit_radius,
+        } => make_gcode_boring(config, data, *depth_per_turn, *bit_radius, feed, rpm),
     }
 }
