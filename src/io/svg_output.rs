@@ -58,10 +58,10 @@ fn make_svg_path(mut points: impl Iterator<Item = Point>, view_box: &mut ViewBox
         .set("vector-effect", "non-scaling-stroke")
 }
 
-fn make_svg_paths(contours: &Vec<LineString>, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_paths(contours: &Vec<LineString>, fill: &str, stroke: &str, view_box: &mut ViewBox) -> element::Group {
     let mut g_contours = element::Group::new()
-        .set("fill", "#4774AA22")
-        .set("stroke", "black")
+        .set("fill", fill)
+        .set("stroke", stroke)
         .set("stroke-width", 1);
 
     for contour in contours {
@@ -71,9 +71,9 @@ fn make_svg_paths(contours: &Vec<LineString>, view_box: &mut ViewBox) -> element
     g_contours
 }
 
-fn make_svg_holes(holes: &Vec<Hole>, color: &str, view_box: &mut ViewBox) -> element::Group {
+fn make_svg_holes(holes: &Vec<Hole>, fill: &str, view_box: &mut ViewBox) -> element::Group {
     let mut g_holes = element::Group::new()
-        .set("fill", color)
+        .set("fill", fill)
         .set("stroke", "none");
 
     for hole in holes {
@@ -95,11 +95,10 @@ pub fn make_svg(fds: &Vec<FabData>) -> Document {
 
     for data in fds {
         let g = match &data.operation {
-            | FabOperation::Engrave(FabContourData { contours, .. })
-            | FabOperation::Cut(FabContourData { contours, .. }) => make_svg_paths(contours, &mut view_box),
-
-            FabOperation::Drilling(FabHoleData { holes, .. }) => make_svg_holes(holes, "#32954488", &mut view_box),
-            FabOperation::Boring { data: FabHoleData { holes, .. }, .. } => make_svg_holes(holes, "#89356688", &mut view_box),
+            FabOperation::Engrave(FabContourData { contours, .. }) => make_svg_paths(contours, "none", "#4774AAFF", &mut view_box),
+            FabOperation::Cut(FabContourData { contours, .. }) => make_svg_paths(contours, "#4774AA22", "red", &mut view_box),
+            FabOperation::Drilling(FabHoleData { holes, .. }) => make_svg_holes(holes, "#329544FF", &mut view_box),
+            FabOperation::Boring { data: FabHoleData { holes, .. }, .. } => make_svg_holes(holes, "#893566FF", &mut view_box),
         };
 
         doc = doc.add(g);
