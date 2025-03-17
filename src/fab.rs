@@ -151,6 +151,8 @@ impl FabData {
                 };
 
                 let holes = primitives.holes();
+                // Only bore holes if the bit is large enough to do helical movement inside of the hole
+                let holes = holes.into_iter().filter(|hole| (hole.radius - bit_radius) > 0.1).collect();
 
                 let fd = FabData {
                     kind: FabDataKind::Boring { holes, depth, bit_radius },
