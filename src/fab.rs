@@ -1,7 +1,7 @@
 use std::iter::once;
 
 use anyhow::{bail, ensure, Result};
-use geo::{BooleanOps, Coord, Intersects, LineString, MultiPolygon, Polygon, Simplify};
+use geo::{BooleanOps, Coord, Intersects, LineString, MultiPolygon, Polygon, Simplify, Vector2DOps};
 use geo_offset::Offset;
 use log::debug;
 
@@ -80,8 +80,20 @@ pub struct FabHoleData {
 
 impl FabHoleData {
     pub fn new(holes: Vec<Hole>, depth: f64) -> Self {
+        let mut holes_unique = vec![];
+
+        // Deduplicate holes
+        for hole in holes {
+            if !holes_unique.iter().any(|h: &Hole| {
+                (hole.center - h.center).magnitude_squared() < EPSILON
+                && (hole.radius - h.radius).abs() < EPSILON
+            }) {
+                holes_unique.push(hole);
+            }
+        }
+
         Self {
-            holes,
+            holes: holes_unique,
             depth,
         }
     }
