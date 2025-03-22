@@ -1,3 +1,22 @@
+macro_rules! always_assert_eq {
+    ($a:expr, $b:expr) => {
+        let a = &$a;
+        let b = &$b;
+        if a != b {
+            panic!("failed assert: {}, got {:?} and {:?}", stringify!($a == $b), a, b);
+        }
+    }
+}
+
+macro_rules! always_assert_ne {
+    ($a:expr, $b:expr) => {
+        let a = &$a;
+        let b = &$b;
+        if a == b {
+            panic!("failed assert: {}, got {:?} and {:?}", stringify!($a != $b), a, b);
+        }
+    }
+}
 
 #[derive(Debug, PartialEq)]
 enum GCodeState {
@@ -31,52 +50,52 @@ impl GCodeGenerator {
     }
 
     pub fn spindle_start_cwise(&mut self) {
-        assert_eq!(self.state, Stopped);
+        always_assert_eq!(self.state, Stopped);
         self.actions.push(format!("M3"));
         self.state = SpinningDisengaged;
     }
 
     pub fn spindle_start_ccwise(&mut self) {
-        assert_eq!(self.state, Stopped);
+        always_assert_eq!(self.state, Stopped);
         self.actions.push(format!("M4"));
         self.state = SpinningDisengaged;
     }
 
     pub fn spindle_stop(&mut self) {
-        assert_eq!(self.state, SpinningDisengaged);
+        always_assert_eq!(self.state, SpinningDisengaged);
         self.actions.push(format!("M5"));
         self.state = Stopped;
     }
 
     pub fn engage(&mut self) {
-        assert_eq!(self.state, SpinningDisengaged);
+        always_assert_eq!(self.state, SpinningDisengaged);
         self.actions.push(format!("G1 Z0"));
         self.state = SpinningEngaged;
     }
 
     pub fn disengage(&mut self) {
-        assert_eq!(self.state, SpinningEngaged);
+        always_assert_eq!(self.state, SpinningEngaged);
         self.actions.push(format!("G1 Z{}", self.safe_height));
         self.state = SpinningDisengaged;
     }
 
     pub fn rapid(&mut self, x: f64, y: f64) {
-        assert_ne!(self.state, SpinningEngaged);
+        always_assert_ne!(self.state, SpinningEngaged);
         self.actions.push(format!("G0 X{x} Y{y}"));
     }
 
     pub fn move_xy(&mut self, x: f64, y: f64) {
-        assert_eq!(self.state, SpinningEngaged);
+        always_assert_eq!(self.state, SpinningEngaged);
         self.actions.push(format!("G1 X{x} Y{y}"));
     }
 
     pub fn move_z(&mut self, z: f64) {
-        assert_eq!(self.state, SpinningEngaged);
+        always_assert_eq!(self.state, SpinningEngaged);
         self.actions.push(format!("G1 Z{z}"));
     }
 
     pub fn helix_ccwise(&mut self, end_x: f64, end_y: f64, end_z: f64, offset_x: f64, offset_y: f64, turns: usize) {
-        assert_eq!(self.state, SpinningEngaged);
+        always_assert_eq!(self.state, SpinningEngaged);
 
         // 1. Select the axis
         // - G17 - Z-axis, XY-plane
@@ -94,14 +113,14 @@ impl GCodeGenerator {
     }
 
     pub fn arc_ccwise(&mut self, end_x: f64, end_y: f64, offset_x: f64, offset_y: f64) {
-        assert_eq!(self.state, SpinningEngaged);
+        always_assert_eq!(self.state, SpinningEngaged);
 
         self.actions.push(format!("G17"));
         self.actions.push(format!("G3 X{end_x} Y{end_y} I{offset_x} J{offset_y}"));
     }
 
     pub fn into_string(mut self) -> String {
-        assert_eq!(self.state, Stopped);
+        always_assert_eq!(self.state, Stopped);
         self.actions.push(format!("M2"));
         self.actions.join("\n")
     }
