@@ -121,7 +121,7 @@ impl FabOperation {
 
         debug!("Cutting in {passes} passes: depth {depth}, depth_per_pass: {depth_per_pass}");
 
-        let depths: Vec<_> = (0..passes)
+        let depths: Vec<_> = (1..=passes)
             .map(|pass| depth_per_pass * pass as f64)
             .chain(once(depth))
             .collect();
