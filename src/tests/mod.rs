@@ -55,10 +55,11 @@ pub fn run(name: &str, doc: &svg::Document, offset: Option<f64>) -> Result<()> {
 
     let job_config = JobConfig {
         kind: JobKind::EngraveContours {
-            depth: offset.unwrap_or(0.0),
+            depth: 0.0,
+            offset: offset.unwrap_or(0.0),
         },
         input,
-        bit_shape: BitShape::V45Deg,
+        bit_shape: BitShape::V,
         feed: 0.0,
         rpm: 0.0,
     };

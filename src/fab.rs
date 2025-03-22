@@ -112,8 +112,8 @@ pub enum FabOperation {
 }
 
 impl FabOperation {
-    pub fn engrave_v45_deg(polygons: MultiPolygon, depth: f64, resolution: f64) -> Self {
-        Self::Engrave(FabContourData::new(polygons, vec![depth], depth, resolution))
+    pub fn engrave_with_offset(polygons: MultiPolygon, depth: f64, offset: f64, resolution: f64) -> Self {
+        Self::Engrave(FabContourData::new(polygons, vec![depth], offset, resolution))
     }
 
     pub fn cut(polygons: MultiPolygon, depth: f64, depth_per_pass: f64, bit_radius: f64, resolution: f64) -> Self {
@@ -178,12 +178,12 @@ impl FabData {
         } = job;
 
         match kind {
-            EngraveContours { depth } => {
-                ensure!(bit_shape == BitShape::V45Deg, "Unsupported bit shape: {:?}", bit_shape);
+            EngraveContours { depth, offset } => {
+                ensure!(bit_shape == BitShape::V, "Unsupported bit shape: {:?}", bit_shape);
 
                 let polygons = primitives.polygons(config.resolution);
                 return Ok(FabData {
-                    operation: FabOperation::engrave_v45_deg(polygons, depth, config.resolution),
+                    operation: FabOperation::engrave_with_offset(polygons, depth, offset, config.resolution),
                     feed,
                     rpm
                 });

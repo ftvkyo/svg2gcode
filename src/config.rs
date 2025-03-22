@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub enum BitShape {
-    V45Deg,
+    V,
     Square { radius: f64 },
 }
 
@@ -13,6 +13,7 @@ pub enum BitShape {
 pub enum JobKind {
     EngraveContours {
         depth: f64,
+        offset: f64,
     },
     CutContours {
         depth: f64,
